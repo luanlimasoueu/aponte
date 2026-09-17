@@ -15,6 +15,17 @@ export default async function LoginPage({
         <div className="mt-4">
           <Flash params={sp} />
         </div>
+        <a
+          href="/auth/google"
+          className="mb-4 flex w-full items-center justify-center gap-2 rounded-md border border-line bg-raised px-4 py-2 text-sm font-medium text-fg transition-colors hover:border-fg/40"
+        >
+          Entrar com Google
+        </a>
+        <div className="mb-4 flex items-center gap-3 text-xs text-muted">
+          <span className="h-px flex-1 bg-line" />
+          ou com email e senha
+          <span className="h-px flex-1 bg-line" />
+        </div>
         <form action={login} className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium">Email</label>

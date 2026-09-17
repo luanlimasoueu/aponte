@@ -5,6 +5,8 @@ a pessoas em **inicio de carreira ou transicao** — em qualquer idade.
 
 ## Funcionalidades (MVP)
 
+- **Cadastro por convite + Google**: o administrador libera emails em `/admin`;
+  novos usuarios entram via Google OAuth. Contas antigas seguem com email+senha.
 - **Tres papeis**: mentor, mentorado e empresa (empresas tambem podem mentorar).
 - **Rede de mentoria**: mentorados solicitam mentoria; mentores aceitam/recusam.
   Um mentorado pode ter varios mentores.
@@ -33,7 +35,36 @@ npm run dev
 ```
 
 O banco `data/ponte.db` e criado e populado com dados de demo na primeira
-execucao. Para comecar do zero, apague a pasta `data/`.
+execucao. Para comecar do zero, apague a pasta `data/`. Para desativar o
+seed de demo (ex.: deploy real), use `SEED_DEMO=0`.
+
+Para rodar em modo producao (`output: "standalone"`, mesmo do Dockerfile):
+
+```bash
+npm run build
+npm start   # node .next/standalone/server.js em localhost:3000
+```
+
+## Admin e convites
+
+A pagina `/admin` e protegida por credenciais definidas em `.env.local`
+(nao commitado):
+
+```bash
+ADMIN_EMAIL=voce@exemplo.com
+ADMIN_PASSWORD=sua-senha
+GOOGLE_CLIENT_ID=...        # Google Cloud Console > Credentials
+GOOGLE_CLIENT_SECRET=...
+BASE_URL=http://localhost:3000
+```
+
+No `/admin` voce adiciona/remove emails convidados e define o papel de cada
+um. O convidado entra em `/signup` > "Continuar com Google"; a conta e criada
+automaticamente se o email estiver na lista.
+
+Para criar as credenciais do Google: Cloud Console > APIs & Services >
+Credentials > Create OAuth client ID > Web application, com redirect URI
+`<BASE_URL>/auth/google/callback`.
 
 ### Contas de demo (senha: `senha123`)
 

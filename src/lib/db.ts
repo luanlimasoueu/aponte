@@ -35,6 +35,12 @@ export interface Contribution {
   created_at: string;
 }
 
+export interface Invite {
+  email: string;
+  role: Role;
+  created_at: string;
+}
+
 export interface Opportunity {
   id: number;
   owner_id: number;
@@ -85,6 +91,11 @@ CREATE TABLE IF NOT EXISTS endorsements (
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (contribution_id, mentor_id)
 );
+CREATE TABLE IF NOT EXISTS invites (
+  email TEXT PRIMARY KEY,
+  role TEXT NOT NULL CHECK(role IN ('mentor','mentee','company')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS opportunities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -134,6 +145,7 @@ export function getUser(id: number): User | null {
 }
 
 function seedIfEmpty(db: DatabaseSync) {
+  if (process.env.SEED_DEMO === "0") return;
   const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as {
     n: number;
   };

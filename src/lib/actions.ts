@@ -1,8 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { getDb, hashPassword, verifyPassword, type Role, type User } from "./db";
-import { createSession, destroySession, getSessionUser } from "./auth";
+import { getDb, verifyPassword, type User } from "./db";
+import {
+  createAdminSession,
+  createSession,
+  destroyAdminSession,
+  destroySession,
+  getSessionUser,
+  isAdmin,
+} from "./auth";
 
 function back(path: string, key: "msg" | "error", text: string): never {
   const sep = path.includes("?") ? "&" : "?";
@@ -13,39 +20,56 @@ function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 async function me(): Promise<User> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
   return user;
 }
 
-export async function signup(formData: FormData) {
-  const name = str(formData, "name");
+export async function adminLogin(formData: FormData) {
   const email = str(formData, "email").toLowerCase();
   const password = str(formData, "password");
-  const role = str(formData, "role") as Role;
-  const headline = str(formData, "headline");
-  const skills = str(formData, "skills");
+  const expected = process.env.ADMIN_PASSWORD;
+  const ok =
+    !!expected &&
+    email === (process.env.ADMIN_EMAIL ?? "").toLowerCase() &&
+    password === expected;
+  if (!ok) back("/admin/login", "error", "Credenciais invalidas.");
+  await createAdminSession();
+  redirect("/admin");
+}
 
-  if (!name || !email || password.length < 6 || !["mentor", "mentee", "company"].includes(role)) {
-    back("/signup", "error", "Preencha os campos obrigatorios (senha com 6+ caracteres).");
+export async function adminLogout() {
+  await destroyAdminSession();
+  redirect("/admin/login");
+}
+
+export async function addInvite(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const email = str(formData, "email").toLowerCase();
+  const role = str(formData, "role");
+  if (!EMAIL_RE.test(email) || !["mentor", "mentee", "company"].includes(role)) {
+    back("/admin", "error", "Informe um email valido e o papel.");
   }
-
-  const db = getDb();
-  let id = 0;
+  if (getDb().prepare("SELECT id FROM users WHERE email = ?").get(email)) {
+    back("/admin", "error", "Este email ja possui conta.");
+  }
   try {
-    const res = db
-      .prepare(
-        "INSERT INTO users (email, password_hash, name, role, headline, skills) VALUES (?,?,?,?,?,?)"
-      )
-      .run(email, hashPassword(password), name, role, headline, skills);
-    id = Number(res.lastInsertRowid);
+    getDb().prepare("INSERT INTO invites (email, role) VALUES (?,?)").run(email, role);
   } catch {
-    back("/signup", "error", "Este email ja esta cadastrado.");
+    back("/admin", "error", "Este email ja foi convidado.");
   }
+  back("/admin", "msg", `Convite criado para ${email}.`);
+}
 
-  await createSession(id);
-  redirect("/dashboard");
+export async function removeInvite(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  getDb()
+    .prepare("DELETE FROM invites WHERE email = ?")
+    .run(str(formData, "email").toLowerCase());
+  back("/admin", "msg", "Convite removido.");
 }
 
 export async function login(formData: FormData) {
