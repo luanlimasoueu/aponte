@@ -147,6 +147,63 @@ Credentials > Create OAuth client ID > Web application, com redirect URI
 | Mentorado  | maria@email.com    |
 | Mentorado  | pedro@email.com    |
 
+## Roteiro de testes ponta a ponta
+
+Com o servidor em execucao (`npm run dev`), abra uma janela normal e uma janela
+anonima em `http://localhost:3000`. Use as contas de demo acima para validar o
+fluxo completo sem depender do Google OAuth.
+
+### 1. Criar e operar um evento
+
+1. Entre como `ana@ponte.dev` (mentor) e abra o painel.
+2. Crie um evento **hibrido** ou **presencial**, com data futura, uma vaga e a
+   opcao de aprovacao manual marcada.
+3. Na janela anonima, entre como `joao@email.com` e abra **Eventos**.
+4. Solicite acesso ao evento, aceitando o aviso de privacidade. Marque os
+   consentimentos de comunicacao e imagem apenas se desejar testar esses campos
+   opcionais.
+5. Volte para a Ana, aprove a solicitacao e registre o check-in do Joao.
+6. Emita o certificado. A pagina aberta em `/certificados/<codigo>` deve exibir
+   o participante, evento, emissor e codigo de verificacao.
+7. Volte ao Joao: em **Minhas inscricoes**, a opcao **Cheguei bem em casa**
+   deve aparecer para eventos presenciais/hibridos com check-in.
+
+Para testar lista de espera, mantenha o evento com uma vaga ocupada e solicite
+acesso tambem como `maria@email.com` ou `pedro@email.com`.
+
+### 2. Mentoria e disponibilidade
+
+1. Com Joao logado, adicione uma ou mais faixas em **Minha disponibilidade**.
+2. Com Ana logada, use **Agendar encontro de mentoria** para um mentorado ativo.
+3. Confirme que ambos os usuarios veem suas conexoes e que o encontro e salvo.
+
+### 3. Cadastro manual de mentorado
+
+1. Com Ana logada, use **Adicionar mentorado** e informe nome, email de teste e
+   senha temporaria com pelo menos dez caracteres.
+2. Saia e entre com o novo email e a senha temporaria.
+3. A plataforma deve direcionar para `/primeiro-acesso`; o painel so fica
+   disponivel depois que a senha pessoal e definida.
+
+> O cadastro manual persiste no SQLite. Use um email descartavel durante o
+> teste ou execute a aplicacao com um `DATABASE_PATH` de teste separado.
+
+### 4. Administracao
+
+Com as variaveis `ADMIN_EMAIL` e `ADMIN_PASSWORD` configuradas, acesse
+`/admin`, crie um convite e valide o cadastro pelo fluxo Google OAuth. Esse
+ultimo passo exige as credenciais Google configuradas em `.env.local`.
+
+### Checklist tecnico
+
+```bash
+npm run lint
+npx tsc --noEmit
+```
+
+Os dois comandos devem concluir sem erros. Em seguida, confirme que
+`http://localhost:3000/eventos` responde e apresenta a agenda de eventos.
+
 ## Deploy (Docker — Railway, Render, Fly.io, VPS)
 
 ```bash
