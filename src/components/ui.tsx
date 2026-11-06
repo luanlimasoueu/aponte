@@ -10,6 +10,12 @@ const BADGE_COLORS: Record<string, string> = {
   projeto: "border-line bg-raised text-muted",
   pending: "border-line bg-raised text-muted",
   active: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+  online: "border-sky-400/30 bg-sky-400/10 text-sky-300",
+  in_person: "border-pink/30 bg-pink/10 text-pink",
+  hybrid: "border-violet/30 bg-violet/10 text-violet",
+  requested: "border-amber-400/30 bg-amber-400/10 text-amber-300",
+  approved: "border-emerald-400/30 bg-emerald-400/10 text-emerald-300",
+  waitlist: "border-line bg-raised text-muted",
 };
 
 export const ROLE_LABELS: Record<string, string> = {

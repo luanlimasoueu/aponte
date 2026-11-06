@@ -14,6 +14,7 @@ export interface User {
   headline: string;
   bio: string;
   skills: string;
+  must_change_password: number;
   created_at: string;
 }
 
@@ -51,6 +52,26 @@ export interface Opportunity {
   created_at: string;
 }
 
+export type EventModality = "online" | "in_person" | "hybrid";
+export type EventStatus = "draft" | "published" | "cancelled";
+export type RegistrationStatus = "requested" | "approved" | "waitlist" | "declined" | "cancelled";
+
+export interface PlatformEvent {
+  id: number;
+  owner_id: number;
+  title: string;
+  description: string;
+  modality: EventModality;
+  starts_at: string;
+  ends_at: string;
+  online_url: string;
+  location: string;
+  capacity: number | null;
+  require_approval: number;
+  status: EventStatus;
+  created_at: string;
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,6 +82,7 @@ CREATE TABLE IF NOT EXISTS users (
   headline TEXT NOT NULL DEFAULT '',
   bio TEXT NOT NULL DEFAULT '',
   skills TEXT NOT NULL DEFAULT '',
+  must_change_password INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -105,6 +127,76 @@ CREATE TABLE IF NOT EXISTS opportunities (
   skills TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+CREATE TABLE IF NOT EXISTS events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  modality TEXT NOT NULL CHECK(modality IN ('online','in_person','hybrid')),
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  online_url TEXT NOT NULL DEFAULT '',
+  location TEXT NOT NULL DEFAULT '',
+  capacity INTEGER,
+  require_approval INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'published' CHECK(status IN ('draft','published','cancelled')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS event_registrations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK(status IN ('requested','approved','waitlist','declined','cancelled')),
+  lgpd_accepted_at TEXT NOT NULL,
+  communication_consent INTEGER NOT NULL DEFAULT 0,
+  image_consent INTEGER NOT NULL DEFAULT 0,
+  checked_in_at TEXT,
+  checked_out_at TEXT,
+  safe_home_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(event_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS availability (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  weekday INTEGER NOT NULL CHECK(weekday BETWEEN 0 AND 6),
+  start_time TEXT NOT NULL,
+  end_time TEXT NOT NULL,
+  visible_to_mentors INTEGER NOT NULL DEFAULT 1,
+  UNIQUE(user_id, weekday, start_time, end_time)
+);
+CREATE TABLE IF NOT EXISTS mentorship_meetings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mentorship_id INTEGER NOT NULL REFERENCES mentorships(id) ON DELETE CASCADE,
+  scheduled_at TEXT NOT NULL,
+  duration_minutes INTEGER NOT NULL DEFAULT 60,
+  notes TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','completed','cancelled')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS certificates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+  mentorship_id INTEGER REFERENCES mentorships(id) ON DELETE SET NULL,
+  issued_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  verification_code TEXT NOT NULL UNIQUE,
+  issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(user_id, event_id),
+  UNIQUE(user_id, mentorship_id)
+);
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_events_status_starts ON events(status, starts_at);
+CREATE INDEX IF NOT EXISTS idx_registrations_event ON event_registrations(event_id, status);
+CREATE INDEX IF NOT EXISTS idx_availability_user ON availability(user_id, weekday);
 `;
 
 const KEYLEN = 64;
@@ -132,9 +224,17 @@ export function getDb(): DatabaseSync {
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec(SCHEMA);
+  ensureMigrations(db);
   _db = db;
   seedIfEmpty(db);
   return db;
+}
+
+function ensureMigrations(db: DatabaseSync) {
+  const columns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+  if (!columns.some((column) => column.name === "must_change_password")) {
+    db.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;");
+  }
 }
 
 export function getUser(id: number): User | null {
@@ -142,6 +242,17 @@ export function getUser(id: number): User | null {
     | User
     | undefined;
   return row ?? null;
+}
+
+export function audit(
+  actorId: number | null,
+  action: string,
+  entityType: string,
+  entityId: number | null
+) {
+  getDb()
+    .prepare("INSERT INTO audit_log (actor_id, action, entity_type, entity_id) VALUES (?,?,?,?)")
+    .run(actorId, action, entityType, entityId);
 }
 
 function seedIfEmpty(db: DatabaseSync) {
@@ -281,5 +392,22 @@ function seedIfEmpty(db: DatabaseSync) {
     rita, "evento", "Workshop: discovery de produto na pratica",
     "Workshop gratuito de 3h. Vamos descobrir um produto do zero em grupo. Aberto a mentorados e mentores.",
     "Produto, UX, Curiosidade"
+  );
+
+  const insertEvent = db.prepare(
+    `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`
+  );
+  insertEvent.run(
+    ana,
+    "Encontro Ponte: primeiros passos em tecnologia",
+    "Uma conversa aberta para quem esta iniciando ou fazendo transicao de carreira. Traga suas perguntas.",
+    "hybrid",
+    "2027-01-20T19:00",
+    "2027-01-20T21:00",
+    "https://meet.google.com/ponte-demo",
+    "Hub Ponte — Sao Paulo, SP",
+    30,
+    0
   );
 }

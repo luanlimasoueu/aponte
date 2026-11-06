@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { getDb, verifyPassword, type User } from "./db";
+import crypto from "node:crypto";
+import { audit, getDb, hashPassword, verifyPassword, type User } from "./db";
 import {
   createAdminSession,
   createSession,
@@ -21,11 +22,21 @@ function str(formData: FormData, key: string): string {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EVENT_MODALITIES = ["online", "in_person", "hybrid"];
 
 async function me(): Promise<User> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (user!.must_change_password) redirect("/primeiro-acesso");
   return user;
+}
+
+function isEventOwner(user: User): boolean {
+  return user.role === "mentor" || user.role === "company";
+}
+
+function validDateTime(value: string): boolean {
+  return !Number.isNaN(Date.parse(value));
 }
 
 export async function adminLogin(formData: FormData) {
@@ -82,6 +93,43 @@ export async function login(formData: FormData) {
     back("/login", "error", "Email ou senha incorretos.");
   }
   await createSession(user!.id);
+  if (user!.must_change_password) redirect("/primeiro-acesso");
+  redirect("/dashboard");
+}
+
+export async function createMentee(formData: FormData) {
+  const mentor = await me();
+  if (mentor.role !== "mentor") redirect("/dashboard");
+  const name = str(formData, "name");
+  const email = str(formData, "email").toLowerCase();
+  const temporaryPassword = str(formData, "temporary_password");
+  if (name.length < 2 || !EMAIL_RE.test(email) || temporaryPassword.length < 10) {
+    back("/dashboard", "error", "Informe nome, email valido e uma senha temporaria de ao menos 10 caracteres.");
+  }
+  const db = getDb();
+  if (db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
+    back("/dashboard", "error", "Este email ja possui uma conta.");
+  }
+  const result = db.prepare(
+    "INSERT INTO users (email, password_hash, name, role, must_change_password) VALUES (?,?,?,?,1)"
+  ).run(email, hashPassword(temporaryPassword), name, "mentee");
+  const menteeId = Number(result.lastInsertRowid);
+  db.prepare("INSERT INTO mentorships (mentor_id, mentee_id, status) VALUES (?,?,'active')").run(mentor.id, menteeId);
+  audit(mentor.id, "mentee.created_by_mentor", "user", menteeId);
+  back("/dashboard", "msg", "Mentorado criado e conectado a sua rede. Envie a senha temporaria por um canal seguro.");
+}
+
+export async function changeInitialPassword(formData: FormData) {
+  const user = await getSessionUser();
+  if (!user) redirect("/login");
+  const password = str(formData, "password");
+  const confirmation = str(formData, "confirmation");
+  if (password.length < 10 || password !== confirmation) {
+    back("/primeiro-acesso", "error", "Use uma senha de ao menos 10 caracteres e confirme o mesmo valor.");
+  }
+  getDb().prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
+    .run(hashPassword(password), user!.id);
+  audit(user!.id, "password.initial_changed", "user", user!.id);
   redirect("/dashboard");
 }
 
@@ -224,4 +272,217 @@ export async function deleteOpportunity(formData: FormData) {
     .prepare("DELETE FROM opportunities WHERE id = ? AND owner_id = ?")
     .run(Number(formData.get("id")), user.id);
   back("/dashboard", "msg", "Oportunidade removida.");
+}
+
+export async function createEvent(formData: FormData) {
+  const user = await me();
+  if (!isEventOwner(user)) back("/dashboard", "error", "Apenas mentores e empresas podem criar eventos.");
+
+  const title = str(formData, "title");
+  const modality = str(formData, "modality");
+  const startsAt = str(formData, "starts_at");
+  const endsAt = str(formData, "ends_at");
+  const onlineUrl = str(formData, "online_url");
+  const location = str(formData, "location");
+  const capacityText = str(formData, "capacity");
+  const capacity = capacityText ? Number(capacityText) : null;
+
+  if (!title || !EVENT_MODALITIES.includes(modality) || !validDateTime(startsAt) || !validDateTime(endsAt)) {
+    back("/dashboard", "error", "Preencha titulo, modalidade e datas validas.");
+  }
+  if (Date.parse(endsAt) <= Date.parse(startsAt)) {
+    back("/dashboard", "error", "O termino deve acontecer depois do inicio.");
+  }
+  if ((modality === "online" || modality === "hybrid") && !onlineUrl) {
+    back("/dashboard", "error", "Informe o link para o evento online.");
+  }
+  if ((modality === "in_person" || modality === "hybrid") && !location) {
+    back("/dashboard", "error", "Informe o local do evento presencial.");
+  }
+  if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) {
+    back("/dashboard", "error", "A capacidade deve ser um numero inteiro maior que zero.");
+  }
+
+  const result = getDb()
+    .prepare(
+      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`
+    )
+    .run(
+      user.id, title, str(formData, "description"), modality, startsAt, endsAt,
+      onlineUrl, location, capacity, formData.get("require_approval") === "on" ? 1 : 0
+    );
+  const eventId = Number(result.lastInsertRowid);
+  audit(user.id, "event.created", "event", eventId);
+  back("/dashboard", "msg", "Evento publicado e pronto para receber inscricoes.");
+}
+
+export async function requestEventAccess(formData: FormData) {
+  const user = await me();
+  if (user.role !== "mentee") back("/eventos", "error", "A inscricao em eventos e destinada a mentorados.");
+  const eventId = Number(formData.get("event_id"));
+  const ret = str(formData, "return") || "/eventos";
+  const db = getDb();
+  const event = db
+    .prepare("SELECT * FROM events WHERE id = ? AND status = 'published'")
+    .get(eventId) as { id: number; owner_id: number; capacity: number | null; require_approval: number } | undefined;
+  if (!event) back(ret, "error", "Evento nao encontrado ou indisponivel.");
+  if (event!.owner_id === user.id) back(ret, "error", "Voce nao pode se inscrever no proprio evento.");
+  if (formData.get("lgpd") !== "on") {
+    back(ret, "error", "Para se inscrever, confirme que leu o aviso de privacidade do evento.");
+  }
+  const filled = db
+    .prepare("SELECT COUNT(*) AS count FROM event_registrations WHERE event_id = ? AND status IN ('requested','approved')")
+    .get(eventId) as { count: number };
+  const status = event!.capacity !== null && filled.count >= event!.capacity
+    ? "waitlist"
+    : event!.require_approval
+      ? "requested"
+      : "approved";
+  try {
+    const result = db
+      .prepare(
+        `INSERT INTO event_registrations (event_id, user_id, status, lgpd_accepted_at, communication_consent, image_consent)
+         VALUES (?,?,?,datetime('now'),?,?)`
+      )
+      .run(eventId, user.id, status, formData.get("communications") === "on" ? 1 : 0, formData.get("image") === "on" ? 1 : 0);
+    audit(user.id, "event.registration_requested", "event_registration", Number(result.lastInsertRowid));
+  } catch {
+    back(ret, "error", "Voce ja possui uma inscricao neste evento.");
+  }
+  const messages: Record<string, string> = {
+    approved: "Inscricao confirmada.",
+    requested: "Solicitacao enviada para aprovacao do organizador.",
+    waitlist: "Evento lotado. Voce entrou na lista de espera.",
+  };
+  back(ret, "msg", messages[status]);
+}
+
+export async function reviewEventRegistration(formData: FormData) {
+  const user = await me();
+  if (!isEventOwner(user)) redirect("/dashboard");
+  const registrationId = Number(formData.get("registration_id"));
+  const decision = str(formData, "decision");
+  const db = getDb();
+  const registration = db
+    .prepare(
+      `SELECT r.id, r.event_id, e.capacity
+       FROM event_registrations r JOIN events e ON e.id = r.event_id
+       WHERE r.id = ? AND e.owner_id = ?`
+    )
+    .get(registrationId, user.id) as { id: number; event_id: number; capacity: number | null } | undefined;
+  if (!registration || !["approve", "decline"].includes(decision)) {
+    back("/dashboard", "error", "Inscricao nao encontrada.");
+  }
+  if (decision === "approve" && registration!.capacity !== null) {
+    const used = db.prepare("SELECT COUNT(*) AS count FROM event_registrations WHERE event_id = ? AND status = 'approved'")
+      .get(registration!.event_id) as { count: number };
+    if (used.count >= registration!.capacity) back("/dashboard", "error", "O evento ja atingiu a capacidade.");
+  }
+  db.prepare("UPDATE event_registrations SET status = ? WHERE id = ?")
+    .run(decision === "approve" ? "approved" : "declined", registrationId);
+  audit(user.id, `event.registration_${decision}d`, "event_registration", registrationId);
+  back("/dashboard", "msg", decision === "approve" ? "Inscricao aprovada." : "Inscricao recusada.");
+}
+
+export async function checkInEvent(formData: FormData) {
+  const user = await me();
+  if (!isEventOwner(user)) redirect("/dashboard");
+  const registrationId = Number(formData.get("registration_id"));
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT r.id FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ? AND r.status = 'approved' AND e.owner_id = ?`
+  ).get(registrationId, user.id);
+  if (!row) back("/dashboard", "error", "Presenca nao encontrada.");
+  db.prepare("UPDATE event_registrations SET checked_in_at = COALESCE(checked_in_at, datetime('now')) WHERE id = ?")
+    .run(registrationId);
+  audit(user.id, "event.checked_in", "event_registration", registrationId);
+  back("/dashboard", "msg", "Presenca registrada.");
+}
+
+export async function confirmSafeHome(formData: FormData) {
+  const user = await me();
+  const registrationId = Number(formData.get("registration_id"));
+  const ret = str(formData, "return") || "/dashboard";
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT r.id FROM event_registrations r JOIN events e ON e.id = r.event_id
+     WHERE r.id = ? AND r.user_id = ? AND e.modality IN ('in_person','hybrid')`
+  ).get(registrationId, user.id);
+  if (!row) back(ret, "error", "Confirmacao indisponivel para este evento.");
+  db.prepare("UPDATE event_registrations SET safe_home_at = COALESCE(safe_home_at, datetime('now')) WHERE id = ?")
+    .run(registrationId);
+  audit(user.id, "event.safe_home_confirmed", "event_registration", registrationId);
+  back(ret, "msg", "Confirmacao registrada. Que bom que voce chegou bem.");
+}
+
+export async function updateAvailability(formData: FormData) {
+  const user = await me();
+  if (user.role !== "mentee") redirect("/dashboard");
+  const weekday = Number(formData.get("weekday"));
+  const start = str(formData, "start_time");
+  const end = str(formData, "end_time");
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6 || !/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end) || start >= end) {
+    back("/dashboard", "error", "Informe um dia e um intervalo de horario valido.");
+  }
+  try {
+    getDb().prepare("INSERT INTO availability (user_id, weekday, start_time, end_time) VALUES (?,?,?,?)")
+      .run(user.id, weekday, start, end);
+  } catch {
+    back("/dashboard", "error", "Este horario ja esta na sua disponibilidade.");
+  }
+  audit(user.id, "availability.created", "availability", null);
+  back("/dashboard", "msg", "Disponibilidade adicionada.");
+}
+
+export async function removeAvailability(formData: FormData) {
+  const user = await me();
+  const id = Number(formData.get("id"));
+  getDb().prepare("DELETE FROM availability WHERE id = ? AND user_id = ?").run(id, user.id);
+  audit(user.id, "availability.deleted", "availability", id);
+  back("/dashboard", "msg", "Disponibilidade removida.");
+}
+
+export async function scheduleMentorshipMeeting(formData: FormData) {
+  const user = await me();
+  const mentorshipId = Number(formData.get("mentorship_id"));
+  const scheduledAt = str(formData, "scheduled_at");
+  const duration = Number(formData.get("duration_minutes") || 60);
+  const db = getDb();
+  const link = db.prepare(
+    "SELECT id FROM mentorships WHERE id = ? AND status = 'active' AND (mentor_id = ? OR mentee_id = ?)"
+  ).get(mentorshipId, user.id, user.id);
+  if (!link || !validDateTime(scheduledAt) || !Number.isInteger(duration) || duration < 15 || duration > 480) {
+    back("/dashboard", "error", "Nao foi possivel agendar este encontro.");
+  }
+  const result = db.prepare(
+    "INSERT INTO mentorship_meetings (mentorship_id, scheduled_at, duration_minutes, notes) VALUES (?,?,?,?)"
+  ).run(mentorshipId, scheduledAt, duration, str(formData, "notes"));
+  audit(user.id, "mentorship.meeting_scheduled", "mentorship_meeting", Number(result.lastInsertRowid));
+  back("/dashboard", "msg", "Encontro de mentoria agendado.");
+}
+
+export async function issueCertificate(formData: FormData) {
+  const user = await me();
+  if (!isEventOwner(user)) redirect("/dashboard");
+  const recipientId = Number(formData.get("recipient_id"));
+  const eventId = Number(formData.get("event_id"));
+  const db = getDb();
+  const event = db.prepare("SELECT id, title FROM events WHERE id = ? AND owner_id = ?")
+    .get(eventId, user.id) as { id: number; title: string } | undefined;
+  const attended = db.prepare(
+    "SELECT id FROM event_registrations WHERE event_id = ? AND user_id = ? AND checked_in_at IS NOT NULL"
+  ).get(eventId, recipientId);
+  if (!event || !attended) back("/dashboard", "error", "Certificados so podem ser emitidos para participantes presentes.");
+  const code = crypto.randomBytes(9).toString("hex").toUpperCase();
+  try {
+    const result = db.prepare(
+      "INSERT INTO certificates (user_id, event_id, issued_by, title, verification_code) VALUES (?,?,?,?,?)"
+    ).run(recipientId, eventId, user.id, event!.title, code);
+    audit(user.id, "certificate.issued", "certificate", Number(result.lastInsertRowid));
+  } catch {
+    back("/dashboard", "error", "Ja existe certificado para esta pessoa neste evento.");
+  }
+  redirect(`/certificados/${code}`);
 }

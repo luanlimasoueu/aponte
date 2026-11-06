@@ -17,6 +17,7 @@ const NAV = [
   { href: "/mentores", label: "Mentores" },
   { href: "/talentos", label: "Talentos" },
   { href: "/oportunidades", label: "Oportunidades" },
+  { href: "/eventos", label: "Eventos" },
 ];
 
 export default async function RootLayout({
