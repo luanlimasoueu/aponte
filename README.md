@@ -171,6 +171,36 @@ fluxo completo sem depender do Google OAuth.
 Para testar lista de espera, mantenha o evento com uma vaga ocupada e solicite
 acesso tambem como `maria@email.com` ou `pedro@email.com`.
 
+### Emitir um certificado manualmente
+
+O certificado e emitido pelo organizador/mentor a partir do check-in do
+participante. O processo nao exige preencher nome ou carga horaria novamente:
+a plataforma usa os dados do evento e da inscricao para reduzir erros.
+
+1. Entre com a conta do **mentor ou empresa que criou o evento**.
+2. Abra o **Painel** (`/dashboard`) e localize a secao **Meus eventos**.
+3. Encontre o evento e, na lista de participantes, confirme que a pessoa esta
+   com a inscricao **confirmada**.
+4. Clique em **check-in** quando a pessoa estiver presente. Sem check-in, o
+   botao de certificado nao aparece.
+5. Depois do check-in, clique em **emitir certificado** ao lado do nome da
+   pessoa.
+6. A plataforma abre a pagina publica do certificado em
+   `/certificados/<codigo>`. Ela mostra participante, evento, emissor, data e
+   o codigo unico de verificacao.
+7. Copie a URL exibida e compartilhe-a com o participante. Ela serve como
+   comprovacao verificavel; qualquer pessoa com o link pode consultar o
+   certificado, sem precisar entrar na plataforma.
+
+Regras importantes:
+
+- Apenas quem criou o evento pode registrar presenca ou emitir certificados.
+- Cada participante recebe apenas um certificado por evento. Uma segunda
+  tentativa e bloqueada para evitar duplicidade.
+- O certificado so pode ser emitido depois de uma presenca confirmada.
+- Para eventos presenciais/hibridos, a confirmacao de chegada em casa e
+  independente e voluntaria; ela nao interfere na emissao do certificado.
+
 ### 2. Mentoria e disponibilidade
 
 1. Com Joao logado, adicione uma ou mais faixas em **Minha disponibilidade**.
