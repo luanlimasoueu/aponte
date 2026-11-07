@@ -135,6 +135,70 @@ Para criar as credenciais do Google: Cloud Console > APIs & Services >
 Credentials > Create OAuth client ID > Web application, com redirect URI
 `<BASE_URL>/auth/google/callback`.
 
+## Seguranca, amigos e administracao
+
+### Quem deve usar cada acesso
+
+- **Amigos e participantes:** devem ter uma conta individual de mentorado,
+  criada pelo mentor com senha temporaria ou pelo fluxo de convite Google. Nunca
+  compartilhe contas demo nem a senha de administrador.
+- **Mentores e empresas:** usam suas contas individuais para operar mentorias e
+  eventos.
+- **Administrador:** usa exclusivamente `/admin` para criar/remover convites.
+  Esse acesso e para o responsavel pela plataforma, nao para participantes.
+
+### Configurar o login administrativo
+
+O login de administrador ja esta implementado e continua usando as variaveis
+privadas abaixo. Defina valores fortes em `.env.local` no desenvolvimento e no
+painel da Vercel em producao:
+
+```bash
+ADMIN_EMAIL=admin@seudominio.com
+ADMIN_PASSWORD=uma-senha-longa-unica-e-privada
+```
+
+Depois, entre em `/admin` com esse email e essa senha. **Nao coloque os valores
+reais no README, no Git, em mensagens de grupo ou no site publico.** Na Vercel,
+as variaveis de ambiente ficam protegidas no projeto e devem ser configuradas
+para Preview e Production.
+
+### Como liberar amigos para testar
+
+1. Entre como mentor no painel.
+2. Em **Adicionar mentorado**, informe nome, email e uma senha temporaria de
+   pelo menos dez caracteres.
+3. Envie essa senha somente para a pessoa correspondente, em mensagem privada.
+4. No primeiro acesso, ela cria a propria senha e aceita as condicoes de
+   participacao, o Codigo de Conduta e, se quiser, a autorizacao de imagem.
+5. A pessoa ja pode informar disponibilidade, solicitar eventos e participar de
+   mentorias.
+
+### Publicar na Vercel com seguranca
+
+> **Antes de publicar para amigos:** o banco SQLite atual e adequado para o
+> ambiente local, mas deve ser migrado para PostgreSQL gerenciado antes de usar
+> a Vercel em producao. Arquivos locais nao sao uma base persistente confiavel
+> para uma aplicacao serverless.
+
+1. Crie um PostgreSQL gerenciado — Neon e a opcao recomendada pela integracao
+   da Vercel.
+2. Migre o codigo do banco de SQLite para PostgreSQL e configure `DATABASE_URL`.
+3. Importe o repositorio na Vercel.
+4. Em **Settings → Environment Variables**, cadastre `DATABASE_URL`,
+   `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_ID`,
+   `GOOGLE_CLIENT_SECRET` e `BASE_URL`.
+5. Configure `BASE_URL` com o dominio final, por exemplo
+   `https://ponte.vercel.app`.
+6. No Google Cloud, adicione
+   `https://ponte.vercel.app/auth/google/callback` como URI de redirecionamento.
+7. Faça primeiro um deploy Preview, execute o roteiro de testes deste README e
+   so depois publique em Production.
+
+As acoes de cadastro, eventos, presenca e certificados validam usuario, papel
+e propriedade no servidor. Senhas sao protegidas com `scrypt`, sessoes usam
+cookies `httpOnly`, e acoes operacionais relevantes entram no log de auditoria.
+
 ### Contas de demo (senha: `senha123`)
 
 | Papel      | Email              |

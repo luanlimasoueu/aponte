@@ -127,8 +127,14 @@ export async function changeInitialPassword(formData: FormData) {
   if (password.length < 10 || password !== confirmation) {
     back("/primeiro-acesso", "error", "Use uma senha de ao menos 10 caracteres e confirme o mesmo valor.");
   }
-  getDb().prepare("UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?")
-    .run(hashPassword(password), user!.id);
+  if (formData.get("employment_terms") !== "on" || formData.get("code_of_conduct") !== "on") {
+    back("/primeiro-acesso", "error", "Aceite as condicoes de participacao e o codigo de conduta para continuar.");
+  }
+  getDb().prepare(
+    `UPDATE users SET password_hash = ?, must_change_password = 0,
+      image_consent = ?, employment_terms_accepted_at = datetime('now'),
+      code_of_conduct_accepted_at = datetime('now') WHERE id = ?`
+  ).run(hashPassword(password), formData.get("image_consent") === "on" ? 1 : 0, user!.id);
   audit(user!.id, "password.initial_changed", "user", user!.id);
   redirect("/dashboard");
 }

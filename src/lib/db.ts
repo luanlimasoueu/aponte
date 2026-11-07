@@ -15,6 +15,9 @@ export interface User {
   bio: string;
   skills: string;
   must_change_password: number;
+  image_consent: number;
+  employment_terms_accepted_at: string | null;
+  code_of_conduct_accepted_at: string | null;
   created_at: string;
 }
 
@@ -83,6 +86,9 @@ CREATE TABLE IF NOT EXISTS users (
   bio TEXT NOT NULL DEFAULT '',
   skills TEXT NOT NULL DEFAULT '',
   must_change_password INTEGER NOT NULL DEFAULT 0,
+  image_consent INTEGER NOT NULL DEFAULT 0,
+  employment_terms_accepted_at TEXT,
+  code_of_conduct_accepted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -232,8 +238,14 @@ export function getDb(): DatabaseSync {
 
 function ensureMigrations(db: DatabaseSync) {
   const columns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
-  if (!columns.some((column) => column.name === "must_change_password")) {
-    db.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;");
+  const additions = [
+    ["must_change_password", "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;"],
+    ["image_consent", "ALTER TABLE users ADD COLUMN image_consent INTEGER NOT NULL DEFAULT 0;"],
+    ["employment_terms_accepted_at", "ALTER TABLE users ADD COLUMN employment_terms_accepted_at TEXT;"],
+    ["code_of_conduct_accepted_at", "ALTER TABLE users ADD COLUMN code_of_conduct_accepted_at TEXT;"],
+  ];
+  for (const [column, sql] of additions) {
+    if (!columns.some((existing) => existing.name === column)) db.exec(sql);
   }
 }
 
