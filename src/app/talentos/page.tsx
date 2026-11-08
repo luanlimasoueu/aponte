@@ -31,6 +31,7 @@ export default async function TalentosPage({
          (SELECT COUNT(*) FROM mentorships m WHERE m.mentee_id = u.id AND m.status = 'active') AS mentors
        FROM users u
        WHERE u.role = 'mentee'
+         AND u.public_profile_consent = 1
          AND (u.name LIKE ? OR u.skills LIKE ? OR u.headline LIKE ? OR u.bio LIKE ?)
        ORDER BY endorsements DESC, contributions DESC, u.name`
     )

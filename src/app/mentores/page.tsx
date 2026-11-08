@@ -33,6 +33,7 @@ export default async function MentoresPage({
          (SELECT COUNT(*) FROM mentorships m WHERE m.mentor_id = u.id AND m.status = 'active') AS mentees
        FROM users u
        WHERE u.role IN ('mentor','company')
+         AND u.public_profile_consent = 1
          AND (u.name LIKE ? OR u.skills LIKE ? OR u.headline LIKE ? OR u.bio LIKE ?)
        ORDER BY (u.role = 'mentor') DESC, mentees DESC, u.name`
     )

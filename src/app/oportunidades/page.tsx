@@ -35,7 +35,7 @@ export default async function OportunidadesPage({
     .prepare(
       `SELECT o.*, u.name AS owner_name, u.role AS owner_role, u.id AS owner_id
        FROM opportunities o JOIN users u ON u.id = o.owner_id
-       WHERE (? = '' OR o.type = ?)
+       WHERE u.public_profile_consent = 1 AND (? = '' OR o.type = ?)
        ORDER BY o.created_at DESC`
     )
     .all(type, type) as unknown as OppRow[];

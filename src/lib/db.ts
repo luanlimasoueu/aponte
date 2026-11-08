@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export type Role = "mentor" | "mentee" | "company";
+export type AccountStatus = "pending" | "active" | "rejected";
 
 export interface User {
   id: number;
@@ -11,11 +12,14 @@ export interface User {
   password_hash: string;
   name: string;
   role: Role;
+  account_status: AccountStatus;
   headline: string;
   bio: string;
   skills: string;
   must_change_password: number;
   image_consent: number;
+  public_profile_consent: number;
+  public_profile_consent_at: string | null;
   employment_terms_accepted_at: string | null;
   code_of_conduct_accepted_at: string | null;
   created_at: string;
@@ -82,11 +86,14 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
   role TEXT NOT NULL CHECK(role IN ('mentor','mentee','company')),
+  account_status TEXT NOT NULL DEFAULT 'active',
   headline TEXT NOT NULL DEFAULT '',
   bio TEXT NOT NULL DEFAULT '',
   skills TEXT NOT NULL DEFAULT '',
   must_change_password INTEGER NOT NULL DEFAULT 0,
   image_consent INTEGER NOT NULL DEFAULT 0,
+  public_profile_consent INTEGER NOT NULL DEFAULT 0,
+  public_profile_consent_at TEXT,
   employment_terms_accepted_at TEXT,
   code_of_conduct_accepted_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -240,7 +247,10 @@ function ensureMigrations(db: DatabaseSync) {
   const columns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
   const additions = [
     ["must_change_password", "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;"],
+    ["account_status", "ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active';"],
     ["image_consent", "ALTER TABLE users ADD COLUMN image_consent INTEGER NOT NULL DEFAULT 0;"],
+    ["public_profile_consent", "ALTER TABLE users ADD COLUMN public_profile_consent INTEGER NOT NULL DEFAULT 0;"],
+    ["public_profile_consent_at", "ALTER TABLE users ADD COLUMN public_profile_consent_at TEXT;"],
     ["employment_terms_accepted_at", "ALTER TABLE users ADD COLUMN employment_terms_accepted_at TEXT;"],
     ["code_of_conduct_accepted_at", "ALTER TABLE users ADD COLUMN code_of_conduct_accepted_at TEXT;"],
   ];

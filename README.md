@@ -5,8 +5,8 @@ a pessoas em **inicio de carreira ou transicao** — em qualquer idade.
 
 ## Funcionalidades (MVP)
 
-- **Cadastro por convite + Google**: o administrador libera emails em `/admin`;
-  novos usuarios entram via Google OAuth. Contas antigas seguem com email+senha.
+- **Cadastro com aprovacao**: mentores e mentorados solicitam acesso com nome,
+  email e senha; o administrador aprova antes do primeiro login.
 - **Tres papeis**: mentor, mentorado e empresa (empresas tambem podem mentorar).
 - **Rede de mentoria**: mentorados solicitam mentoria; mentores aceitam/recusam.
   Um mentorado pode ter varios mentores.
@@ -28,6 +28,9 @@ a pessoas em **inicio de carreira ou transicao** — em qualquer idade.
   check-in, com uma pagina publica de validacao por codigo.
 - **Privacidade por evento**: inscricao exige ciencia do aviso de privacidade;
   comunicacoes e uso de imagem sao consentimentos separados e opcionais.
+- **Perfil publico por aceite**: nome, resumo, bio, habilidades, rede e
+  contribuicoes so aparecem publicamente quando a pessoa aceita essa
+  visibilidade; o aceite pode ser revogado no painel.
 - **Perfis publicos**: qualquer pessoa pode ver perfis, redes e contribuicoes.
 
 ## Como a plataforma funciona
@@ -36,7 +39,7 @@ a pessoas em **inicio de carreira ou transicao** — em qualquer idade.
 
 | Perfil | O que pode fazer |
 | ------ | ---------------- |
-| Administrador | Gerencia convites de mentor, mentorado e empresa em `/admin`. |
+| Administrador | Analisa e aprova cadastros de mentores e mentorados em `/admin`. |
 | Mentor | Aceita solicitacoes, cria mentorados manualmente, agenda mentorias, cria e opera eventos e emite certificados. |
 | Mentorado | Mantem disponibilidade, pode ter varios mentores, solicita mentoria e pede acesso a eventos. |
 | Empresa | Atua como organizadora/mentora, publica oportunidades e cria eventos. |
@@ -76,6 +79,11 @@ encontros.
 A inscricao em evento registra a ciencia do aviso de privacidade. Os
 consentimentos para receber comunicacoes e para uso de imagem sao opcionais e
 separados do aceite necessario para gerir a inscricao.
+
+O perfil publico tambem exige aceite expresso: somente nome, resumo, bio,
+habilidades, rede e contribuicoes podem aparecer para visitantes. Email,
+disponibilidade, presencas, anotacoes e consentimentos continuam privados. A
+pessoa pode desativar a visibilidade no editor do proprio perfil.
 
 - Cada acao sensivel valida sessao, papel e propriedade do recurso no servidor.
 - Senhas usam `scrypt`; sessoes usam cookies `httpOnly` com expiração.
@@ -123,9 +131,12 @@ GOOGLE_CLIENT_SECRET=...
 BASE_URL=http://localhost:3000
 ```
 
-No `/admin` voce adiciona/remove emails convidados e define o papel de cada
-um. O convidado entra em `/signup` > "Continuar com Google"; a conta e criada
-automaticamente se o email estiver na lista.
+No `/admin`, o administrador analisa os cadastros pendentes e aprova ou recusa
+cada mentor e mentorado. Uma conta pendente nao consegue fazer login.
+
+Os convites Google existentes permanecem como fluxo legado para contas que ja
+usavam OAuth; o fluxo recomendado para novos participantes e o cadastro direto
+com aprovacao administrativa.
 
 Mentores tambem podem criar, no painel, um acesso de mentorado por nome,
 email e senha temporaria. A senha deve ser enviada pelo mentor em canal seguro;
@@ -139,13 +150,15 @@ Credentials > Create OAuth client ID > Web application, com redirect URI
 
 ### Quem deve usar cada acesso
 
-- **Amigos e participantes:** devem ter uma conta individual de mentorado,
-  criada pelo mentor com senha temporaria ou pelo fluxo de convite Google. Nunca
-  compartilhe contas demo nem a senha de administrador.
+- **Amigos e participantes:** devem solicitar uma conta individual como mentor
+  ou mentorado e aguardar aprovacao. Um mentor tambem pode cadastrar um
+  mentorado com senha temporaria; mesmo assim, o administrador precisa aprovar
+  a conta. Nunca compartilhe contas demo nem a senha de administrador.
 - **Mentores e empresas:** usam suas contas individuais para operar mentorias e
   eventos.
-- **Administrador:** usa exclusivamente `/admin` para criar/remover convites.
-  Esse acesso e para o responsavel pela plataforma, nao para participantes.
+- **Administrador:** usa exclusivamente `/admin` para aprovar ou recusar
+  cadastros. Esse acesso e para o responsavel pela plataforma, nao para
+  participantes.
 
 ### Configurar o login administrativo
 
@@ -169,9 +182,10 @@ para Preview e Production.
 2. Em **Adicionar mentorado**, informe nome, email e uma senha temporaria de
    pelo menos dez caracteres.
 3. Envie essa senha somente para a pessoa correspondente, em mensagem privada.
-4. No primeiro acesso, ela cria a propria senha e aceita as condicoes de
+4. No `/admin`, aprove o cadastro em **Cadastros aguardando aprovacao**.
+5. No primeiro acesso, ela cria a propria senha e aceita as condicoes de
    participacao, o Codigo de Conduta e, se quiser, a autorizacao de imagem.
-5. A pessoa ja pode informar disponibilidade, solicitar eventos e participar de
+6. A pessoa ja pode informar disponibilidade, solicitar eventos e participar de
    mentorias.
 
 ### Publicar na Vercel com seguranca
@@ -285,8 +299,8 @@ Regras importantes:
 ### 4. Administracao
 
 Com as variaveis `ADMIN_EMAIL` e `ADMIN_PASSWORD` configuradas, acesse
-`/admin`, crie um convite e valide o cadastro pelo fluxo Google OAuth. Esse
-ultimo passo exige as credenciais Google configuradas em `.env.local`.
+`/admin`, aprove um cadastro de mentor ou mentorado e confirme que ele consegue
+entrar com o email e senha escolhidos no registro.
 
 ### Checklist tecnico
 

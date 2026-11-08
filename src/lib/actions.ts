@@ -27,6 +27,7 @@ const EVENT_MODALITIES = ["online", "in_person", "hybrid"];
 async function me(): Promise<User> {
   const user = await getSessionUser();
   if (!user) redirect("/login");
+  if (user!.account_status !== "active") redirect("/login?error=Sua conta ainda nao esta ativa.");
   if (user!.must_change_password) redirect("/primeiro-acesso");
   return user;
 }
@@ -92,9 +93,64 @@ export async function login(formData: FormData) {
   if (!user || !verifyPassword(password, user.password_hash)) {
     back("/login", "error", "Email ou senha incorretos.");
   }
+  if (user!.account_status === "pending") {
+    back("/login", "error", "Seu cadastro esta aguardando aprovacao do administrador.");
+  }
+  if (user!.account_status === "rejected") {
+    back("/login", "error", "Seu cadastro nao foi aprovado. Fale com o administrador.");
+  }
   await createSession(user!.id);
   if (user!.must_change_password) redirect("/primeiro-acesso");
   redirect("/dashboard");
+}
+
+export async function registerAccount(formData: FormData) {
+  const name = str(formData, "name");
+  const email = str(formData, "email").toLowerCase();
+  const password = str(formData, "password");
+  const confirmation = str(formData, "confirmation");
+  const role = str(formData, "role");
+  if (name.length < 2 || !EMAIL_RE.test(email) || password.length < 10 || password !== confirmation) {
+    back("/signup", "error", "Preencha nome, email e uma senha de ao menos 10 caracteres confirmada corretamente.");
+  }
+  if (!["mentor", "mentee"].includes(role)) {
+    back("/signup", "error", "Escolha se deseja se cadastrar como mentor ou mentorado.");
+  }
+  if (formData.get("employment_terms") !== "on" || formData.get("code_of_conduct") !== "on") {
+    back("/signup", "error", "Aceite as condicoes de participacao e o Codigo de Conduta para enviar seu cadastro.");
+  }
+  if (formData.get("public_profile_consent") !== "on") {
+    back("/signup", "error", "Para participar da rede, confirme que entende quais dados do perfil ficarao publicos.");
+  }
+  const db = getDb();
+  if (db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
+    back("/signup", "error", "Este email ja possui cadastro.");
+  }
+  const result = db.prepare(
+    `INSERT INTO users (
+      email, password_hash, name, role, account_status, image_consent,
+      public_profile_consent, public_profile_consent_at,
+      employment_terms_accepted_at, code_of_conduct_accepted_at
+    ) VALUES (?,?,?,?, 'pending', ?, 1, datetime('now'), datetime('now'), datetime('now'))`
+  ).run(email, hashPassword(password), name, role, formData.get("image_consent") === "on" ? 1 : 0);
+  audit(null, "account.requested", "user", Number(result.lastInsertRowid));
+  back("/login", "msg", "Cadastro enviado. Aguarde a aprovacao do administrador para entrar.");
+}
+
+export async function reviewAccount(formData: FormData) {
+  if (!(await isAdmin())) redirect("/admin/login");
+  const id = Number(formData.get("id"));
+  const decision = str(formData, "decision");
+  if (!Number.isInteger(id) || !["approve", "reject"].includes(decision)) {
+    back("/admin", "error", "Cadastro invalido.");
+  }
+  const db = getDb();
+  const user = db.prepare("SELECT id FROM users WHERE id = ? AND account_status = 'pending'").get(id);
+  if (!user) back("/admin", "error", "Cadastro nao encontrado ou ja analisado.");
+  const status = decision === "approve" ? "active" : "rejected";
+  db.prepare("UPDATE users SET account_status = ? WHERE id = ?").run(status, id);
+  audit(null, `account.${status}`, "user", id);
+  back("/admin", "msg", decision === "approve" ? "Cadastro aprovado e liberado para uso." : "Cadastro recusado.");
 }
 
 export async function createMentee(formData: FormData) {
@@ -111,12 +167,12 @@ export async function createMentee(formData: FormData) {
     back("/dashboard", "error", "Este email ja possui uma conta.");
   }
   const result = db.prepare(
-    "INSERT INTO users (email, password_hash, name, role, must_change_password) VALUES (?,?,?,?,1)"
+    "INSERT INTO users (email, password_hash, name, role, account_status, must_change_password) VALUES (?,?,?,?, 'pending', 1)"
   ).run(email, hashPassword(temporaryPassword), name, "mentee");
   const menteeId = Number(result.lastInsertRowid);
   db.prepare("INSERT INTO mentorships (mentor_id, mentee_id, status) VALUES (?,?,'active')").run(mentor.id, menteeId);
   audit(mentor.id, "mentee.created_by_mentor", "user", menteeId);
-  back("/dashboard", "msg", "Mentorado criado e conectado a sua rede. Envie a senha temporaria por um canal seguro.");
+  back("/dashboard", "msg", "Mentorado criado e conectado a sua rede. O administrador ainda precisa aprovar o cadastro antes do primeiro acesso.");
 }
 
 export async function changeInitialPassword(formData: FormData) {
@@ -130,9 +186,12 @@ export async function changeInitialPassword(formData: FormData) {
   if (formData.get("employment_terms") !== "on" || formData.get("code_of_conduct") !== "on") {
     back("/primeiro-acesso", "error", "Aceite as condicoes de participacao e o codigo de conduta para continuar.");
   }
+  if (formData.get("public_profile_consent") !== "on") {
+    back("/primeiro-acesso", "error", "Confirme que entende quais dados do perfil ficarao publicos para continuar.");
+  }
   getDb().prepare(
     `UPDATE users SET password_hash = ?, must_change_password = 0,
-      image_consent = ?, employment_terms_accepted_at = datetime('now'),
+      image_consent = ?, public_profile_consent = 1, public_profile_consent_at = datetime('now'), employment_terms_accepted_at = datetime('now'),
       code_of_conduct_accepted_at = datetime('now') WHERE id = ?`
   ).run(hashPassword(password), formData.get("image_consent") === "on" ? 1 : 0, user!.id);
   audit(user!.id, "password.initial_changed", "user", user!.id);
@@ -147,8 +206,15 @@ export async function logout() {
 export async function updateProfile(formData: FormData) {
   const user = await me();
   getDb()
-    .prepare("UPDATE users SET headline = ?, bio = ?, skills = ? WHERE id = ?")
-    .run(str(formData, "headline"), str(formData, "bio"), str(formData, "skills"), user.id);
+    .prepare(`UPDATE users SET headline = ?, bio = ?, skills = ?,
+      public_profile_consent = ?, public_profile_consent_at = CASE WHEN ? = 1 THEN COALESCE(public_profile_consent_at, datetime('now')) ELSE NULL END
+      WHERE id = ?`)
+    .run(
+      str(formData, "headline"), str(formData, "bio"), str(formData, "skills"),
+      formData.get("public_profile_consent") === "on" ? 1 : 0,
+      formData.get("public_profile_consent") === "on" ? 1 : 0,
+      user.id
+    );
   back("/dashboard", "msg", "Perfil atualizado.");
 }
 

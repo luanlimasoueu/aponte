@@ -171,6 +171,10 @@ function ProfileEditor({ user }: { user: User }) {
           <label className="mb-1 block text-sm font-medium">Especialidades (virgula)</label>
           <input name="skills" defaultValue={user.skills} className={inputCls} />
         </div>
+        <label className="flex items-start gap-2 text-xs leading-relaxed text-muted">
+          <input name="public_profile_consent" type="checkbox" defaultChecked={Boolean(user.public_profile_consent)} className="mt-0.5" />
+          <span>Permito que meu nome, resumo, bio, habilidades, rede e contribuicoes aparecam no perfil publico. Posso revogar essa permissao a qualquer momento.</span>
+        </label>
         <button className={btnSecondaryCls}>Salvar perfil</button>
       </form>
     </Card>

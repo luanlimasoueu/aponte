@@ -30,6 +30,7 @@ export default async function PessoaPage({
   const profile = getUser(Number(id));
   if (!profile) notFound();
   const viewer = await getSessionUser();
+  if (!profile.public_profile_consent && viewer?.id !== profile.id) notFound();
   const db = getDb();
   const ret = `/pessoas/${profile.id}`;
 
@@ -48,7 +49,7 @@ export default async function PessoaPage({
     .prepare(
       `SELECT u.id, u.name, u.headline FROM mentorships m
        JOIN users u ON u.id = m.mentee_id
-       WHERE m.mentor_id = ? AND m.status = 'active' ORDER BY u.name`
+       WHERE m.mentor_id = ? AND m.status = 'active' AND u.public_profile_consent = 1 ORDER BY u.name`
     )
     .all(profile.id) as unknown as { id: number; name: string; headline: string }[];
 
