@@ -1,27 +1,50 @@
 import Link from "next/link";
-import { Eyebrow } from "@/components/ui";
+import { Badge, Eyebrow } from "@/components/ui";
+import { getDb, type PlatformEvent } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+
+const PATHS = [
+  {
+    href: "/sou-mentor",
+    label: "Sou Mentor",
+    description: "Compartilhe o que voce sabe: acompanhe mentorados, oriente projetos e de feedback sobre a evolucao de cada um.",
+  },
+  {
+    href: "/sou-mentorado",
+    label: "Sou Mentorado",
+    description: "Encontre mentores compativeis com o que voce quer aprender, crie projetos e acompanhe suas metas.",
+  },
+  {
+    href: "/sou-empresa",
+    label: "Sou Empresa",
+    description: "Publique projetos reais e encontre mentorados com as ferramentas e os objetivos que voce procura.",
+  },
+];
+
+const MODALITY_LABEL: Record<string, string> = { online: "Online", in_person: "Presencial", hybrid: "Hibrido" };
 
 const AUDIENCES = [
   {
     title: "Para quem esta comecando",
     description:
       "Monte sua rede com varios mentores, participe de projetos open source e eventos, e mostre suas contribuicoes em um perfil publico que fala por voce no mercado.",
-    href: "/signup",
+    href: "/sou-mentorado",
     link: "Criar perfil de mentorado",
   },
   {
     title: "Para mentores",
     description:
       "Compartilhe sua experiencia, monte sua rede de mentorados e recomende as contribuicoes deles. Colabore tambem em projetos e eventos de outros especialistas.",
-    href: "/mentores",
-    link: "Explorar mentores",
+    href: "/sou-mentor",
+    link: "Quero ser mentor",
   },
   {
     title: "Para empresas",
     description:
       "Atue como mentora e forme talentos do seu jeito, publique vagas e encontre profissionais juniores com contribuicoes reais — avaliadas por mentores.",
-    href: "/talentos",
-    link: "Buscar talentos",
+    href: "/sou-empresa",
+    link: "Area para empresas",
   },
 ];
 
@@ -100,6 +123,17 @@ function NetworkVisual() {
 }
 
 export default function Home() {
+  const db = getDb();
+  const events = db
+    .prepare("SELECT * FROM events WHERE status = 'published' AND ends_at >= ? ORDER BY starts_at LIMIT 3")
+    .all(new Date().toISOString().slice(0, 16)) as unknown as PlatformEvent[];
+  const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+  const stats = [
+    { value: count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentor' AND account_status = 'active'"), label: "mentores ativos" },
+    { value: count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentee' AND account_status = 'active'"), label: "mentorados" },
+    { value: count("SELECT COUNT(*) AS n FROM mentorships WHERE status = 'active'"), label: "mentorias em andamento" },
+    { value: count("SELECT COUNT(*) AS n FROM projects WHERE kind != 'particular' AND visibility = 'public' AND status NOT IN ('rascunho','arquivado')"), label: "projetos abertos a comunidade" },
+  ];
   return (
     <div>
       {/* Hero */}
@@ -133,6 +167,26 @@ export default function Home() {
         </div>
         <div className="flex justify-center lg:justify-end">
           <NetworkVisual />
+        </div>
+      </section>
+
+      {/* Tres acessos */}
+      <section aria-labelledby="caminhos" className="pb-20">
+        <h2 id="caminhos" className="sr-only">Escolha como voce quer participar</h2>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {PATHS.map((p) => (
+            <Link
+              key={p.href}
+              href={p.href}
+              className="group flex flex-col rounded-lg border border-line bg-surface p-6 transition-colors hover:border-accent focus-visible:border-accent"
+            >
+              <span className="text-xl font-bold tracking-tight">{p.label}</span>
+              <span className="mt-2 flex-1 text-sm leading-relaxed text-muted">{p.description}</span>
+              <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium text-accent">
+                Comecar <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">→</span>
+              </span>
+            </Link>
+          ))}
         </div>
       </section>
 
@@ -189,6 +243,51 @@ export default function Home() {
             <p className="mt-3 text-sm leading-relaxed text-muted lg:ml-auto lg:max-w-[200px]">
               Um processo simples, do perfil a evidencia publica.
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 03 — Eventos e impacto */}
+      <section className="border-t border-line py-20">
+        <div className="grid gap-12 lg:grid-cols-[200px_1fr]">
+          <div>
+            <span className="font-mono text-xs text-muted">03</span>
+            <h2 className="mt-3 text-3xl font-bold tracking-tight">Proximos eventos</h2>
+            <p className="mt-3 text-sm leading-relaxed text-muted">Abertos a todos os perfis, online e presenciais.</p>
+            <Link href="/eventos" className="mt-5 inline-flex items-center gap-1.5 text-sm text-accent">
+              Ver todos <span aria-hidden="true">→</span>
+            </Link>
+          </div>
+          <div className="space-y-10">
+            {events.length === 0 ? (
+              <p className="text-sm text-muted">Nenhum evento publicado no momento.</p>
+            ) : (
+              <ul className="grid gap-4 sm:grid-cols-3">
+                {events.map((e) => (
+                  <li key={e.id}>
+                    <Link href={`/eventos/${e.id}`} className="block h-full rounded-lg border border-line p-5 transition-colors hover:border-accent">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge kind={e.modality} label={MODALITY_LABEL[e.modality]} />
+                        {e.category && <Badge kind="projeto" label={e.category} />}
+                      </div>
+                      <p className="mt-3 font-semibold">{e.title}</p>
+                      <p className="mt-2 text-xs text-muted">
+                        {new Date(e.starts_at).toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" })}
+                        {e.city ? ` · ${e.city}${e.state ? `/${e.state}` : ""}` : ""}
+                      </p>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <dl className="grid grid-cols-2 gap-6 border-t border-line pt-8 sm:grid-cols-4">
+              {stats.map((s) => (
+                <div key={s.label}>
+                  <dt className="text-xs text-muted">{s.label}</dt>
+                  <dd className="mt-1 text-3xl font-bold tabular-nums">{s.value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </div>
       </section>

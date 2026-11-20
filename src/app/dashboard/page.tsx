@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EVENT_CATEGORIES } from "@/lib/catalog";
 import { redirect } from "next/navigation";
 import { getDb, type User } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
@@ -98,6 +99,14 @@ function EventCreator() {
         </div>
         <input name="online_url" type="url" placeholder="Link do encontro online" className={inputCls} />
         <input name="location" placeholder="Endereco / local presencial" className={inputCls} />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <select name="category" aria-label="Categoria" className={inputCls} defaultValue="">
+            <option value="">Categoria</option>
+            {EVENT_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+          </select>
+          <input name="city" placeholder="Cidade" aria-label="Cidade" className={inputCls} />
+          <input name="state" placeholder="UF" aria-label="Estado (UF)" maxLength={2} className={inputCls} />
+        </div>
         <label className="flex items-center gap-2 text-xs text-muted"><input name="require_approval" type="checkbox" /> Aprovar inscricoes manualmente</label>
         <button className={btnSecondaryCls}>Publicar evento</button>
       </form>

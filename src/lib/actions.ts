@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import crypto from "node:crypto";
-import { audit, getDb, hashPassword, verifyPassword, type User } from "./db";
+import { audit, getDb, hashPassword, notify, verifyPassword, type User } from "./db";
 import {
   createAdminSession,
   createSession,
@@ -110,21 +110,23 @@ export async function registerAccount(formData: FormData) {
   const password = str(formData, "password");
   const confirmation = str(formData, "confirmation");
   const role = str(formData, "role");
-  if (name.length < 2 || !EMAIL_RE.test(email) || password.length < 10 || password !== confirmation) {
-    back("/signup", "error", "Preencha nome, email e uma senha de ao menos 10 caracteres confirmada corretamente.");
-  }
-  if (!["mentor", "mentee"].includes(role)) {
-    back("/signup", "error", "Escolha se deseja se cadastrar como mentor ou mentorado.");
+  const ret = ["mentor", "mentee", "company"].includes(role) ? `/signup?role=${role}` : "/signup";
+  if (name.length < 2) back(ret, "error", "Informe seu nome (ou o nome da empresa) com pelo menos 2 caracteres.");
+  if (!EMAIL_RE.test(email)) back(ret, "error", "Informe um email valido, por exemplo nome@dominio.com.");
+  if (password.length < 10) back(ret, "error", "A senha precisa ter pelo menos 10 caracteres.");
+  if (password !== confirmation) back(ret, "error", "A confirmacao de senha nao confere.");
+  if (!["mentor", "mentee", "company"].includes(role)) {
+    back(ret, "error", "Escolha se deseja se cadastrar como mentor, mentorado ou empresa.");
   }
   if (formData.get("employment_terms") !== "on" || formData.get("code_of_conduct") !== "on") {
-    back("/signup", "error", "Aceite as condicoes de participacao e o Codigo de Conduta para enviar seu cadastro.");
+    back(ret, "error", "Aceite as condicoes de participacao e o Codigo de Conduta para enviar seu cadastro.");
   }
   if (formData.get("public_profile_consent") !== "on") {
-    back("/signup", "error", "Para participar da rede, confirme que entende quais dados do perfil ficarao publicos.");
+    back(ret, "error", "Para participar da rede, confirme que entende quais dados do perfil ficarao publicos.");
   }
   const db = getDb();
   if (db.prepare("SELECT id FROM users WHERE email = ?").get(email)) {
-    back("/signup", "error", "Este email ja possui cadastro.");
+    back(ret, "error", "Este email ja possui cadastro.");
   }
   const result = db.prepare(
     `INSERT INTO users (
@@ -226,14 +228,19 @@ export async function requestMentorship(formData: FormData) {
     back(ret, "error", "Apenas mentorados podem solicitar mentoria.");
   }
   if (mentorId === user.id) back(ret, "error", "Voce nao pode ser seu proprio mentor.");
+  const mentor = getDb()
+    .prepare("SELECT id FROM users WHERE id = ? AND role IN ('mentor','company') AND account_status = 'active'")
+    .get(mentorId);
+  if (!mentor) back(ret, "error", "Mentor nao encontrado.");
   try {
     getDb()
-      .prepare("INSERT INTO mentorships (mentor_id, mentee_id) VALUES (?,?)")
-      .run(mentorId, user.id);
+      .prepare("INSERT INTO mentorships (mentor_id, mentee_id, objective, message) VALUES (?,?,?,?)")
+      .run(mentorId, user.id, str(formData, "objective").slice(0, 300), str(formData, "message").slice(0, 1000));
   } catch {
     back(ret, "error", "Voce ja possui uma solicitacao com este mentor.");
   }
-  back(ret, "msg", "Solicitacao de mentoria enviada.");
+  notify(mentorId, `${user.name} pediu sua mentoria.`, "/dashboard");
+  back(ret, "msg", "Solicitacao de mentoria enviada. Voce sera avisado(a) quando o mentor responder.");
 }
 
 export async function respondMentorship(formData: FormData) {
@@ -243,9 +250,14 @@ export async function respondMentorship(formData: FormData) {
   const decision = str(formData, "decision");
   const db = getDb();
   const req = db
-    .prepare("SELECT id FROM mentorships WHERE id = ? AND mentor_id = ? AND status = 'pending'")
-    .get(id, user.id);
+    .prepare("SELECT id, mentee_id FROM mentorships WHERE id = ? AND mentor_id = ? AND status = 'pending'")
+    .get(id, user.id) as { id: number; mentee_id: number } | undefined;
   if (!req) back("/dashboard", "error", "Solicitacao nao encontrada.");
+  notify(
+    req!.mentee_id,
+    decision === "accept" ? `${user.name} aceitou sua solicitacao de mentoria.` : `${user.name} nao pode aceitar sua mentoria agora.`,
+    decision === "accept" ? "/aprendizado" : "/mentores"
+  );
   if (decision === "accept") {
     db.prepare("UPDATE mentorships SET status = 'active' WHERE id = ?").run(id);
   } else {
@@ -377,12 +389,14 @@ export async function createEvent(formData: FormData) {
 
   const result = getDb()
     .prepare(
-      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
       user.id, title, str(formData, "description"), modality, startsAt, endsAt,
-      onlineUrl, location, capacity, formData.get("require_approval") === "on" ? 1 : 0
+      onlineUrl, location, capacity, formData.get("require_approval") === "on" ? 1 : 0,
+      str(formData, "category"), str(formData, "city"), str(formData, "state").toUpperCase().slice(0, 2),
+      str(formData, "organizer") || user.name
     );
   const eventId = Number(result.lastInsertRowid);
   audit(user.id, "event.created", "event", eventId);

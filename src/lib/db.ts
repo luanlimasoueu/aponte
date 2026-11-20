@@ -76,7 +76,36 @@ export interface PlatformEvent {
   capacity: number | null;
   require_approval: number;
   status: EventStatus;
+  category: string;
+  city: string;
+  state: string;
+  organizer: string;
   created_at: string;
+}
+
+export interface Project {
+  id: number;
+  owner_id: number;
+  kind: "particular" | "open_source" | "educacional" | "empresarial";
+  title: string;
+  summary: string;
+  description: string;
+  goals: string;
+  tools: string;
+  areas: string;
+  difficulty: string;
+  opportunity_type: string;
+  modality: string;
+  weekly_hours: string;
+  starts_on: string;
+  ends_on: string;
+  slots: number | null;
+  repo_url: string;
+  help_needed: string;
+  status: string;
+  visibility: "public" | "private" | "invite";
+  created_at: string;
+  updated_at: string;
 }
 
 const SCHEMA = `
@@ -210,6 +239,91 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_events_status_starts ON events(status, starts_at);
 CREATE INDEX IF NOT EXISTS idx_registrations_event ON event_registrations(event_id, status);
 CREATE INDEX IF NOT EXISTS idx_availability_user ON availability(user_id, weekday);
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  data TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS projects (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('particular','open_source','educacional','empresarial')),
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  goals TEXT NOT NULL DEFAULT '',
+  tools TEXT NOT NULL DEFAULT '',
+  areas TEXT NOT NULL DEFAULT '',
+  difficulty TEXT NOT NULL DEFAULT '',
+  opportunity_type TEXT NOT NULL DEFAULT '',
+  modality TEXT NOT NULL DEFAULT '',
+  weekly_hours TEXT NOT NULL DEFAULT '',
+  starts_on TEXT NOT NULL DEFAULT '',
+  ends_on TEXT NOT NULL DEFAULT '',
+  slots INTEGER,
+  repo_url TEXT NOT NULL DEFAULT '',
+  help_needed TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'aberto',
+  visibility TEXT NOT NULL DEFAULT 'public' CHECK(visibility IN ('public','private','invite')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS project_access (
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  mentor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  granted_at TEXT NOT NULL DEFAULT (datetime('now')),
+  revoked_at TEXT,
+  PRIMARY KEY (project_id, mentor_id)
+);
+CREATE TABLE IF NOT EXISTS project_applications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','accepted','rejected','cancelled')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(project_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS project_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS learning_goals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mentee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  due_on TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'andamento' CHECK(status IN ('andamento','concluida')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS goal_steps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  goal_id INTEGER NOT NULL REFERENCES learning_goals(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS goal_feedback (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  goal_id INTEGER NOT NULL REFERENCES learning_goals(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS notifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body TEXT NOT NULL,
+  link TEXT NOT NULL DEFAULT '',
+  read_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_projects_kind ON projects(kind, visibility, status);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at);
 `;
 
 const KEYLEN = 64;
@@ -240,6 +354,7 @@ export function getDb(): DatabaseSync {
   ensureMigrations(db);
   _db = db;
   seedIfEmpty(db);
+  seedEducation(db);
   return db;
 }
 
@@ -257,6 +372,90 @@ function ensureMigrations(db: DatabaseSync) {
   for (const [column, sql] of additions) {
     if (!columns.some((existing) => existing.name === column)) db.exec(sql);
   }
+  addColumns(db, "events", {
+    category: "TEXT NOT NULL DEFAULT ''",
+    city: "TEXT NOT NULL DEFAULT ''",
+    state: "TEXT NOT NULL DEFAULT ''",
+    organizer: "TEXT NOT NULL DEFAULT ''",
+  });
+  addColumns(db, "mentorships", {
+    objective: "TEXT NOT NULL DEFAULT ''",
+    message: "TEXT NOT NULL DEFAULT ''",
+  });
+}
+
+function addColumns(db: DatabaseSync, table: string, cols: Record<string, string>) {
+  const existing = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+  for (const [name, def] of Object.entries(cols)) {
+    if (!existing.includes(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def};`);
+  }
+}
+
+export type Profile = {
+  tools?: string[];
+  toolsOther?: string;
+  learnTools?: string[];
+  areas?: string[];
+  help?: string[];
+  days?: string[];
+  periods?: string[];
+  sessionDuration?: string;
+  weeklyHours?: string;
+  modality?: string;
+  level?: string;
+  maxMentees?: string;
+  goals?: string;
+  city?: string;
+  state?: string;
+  linkedin?: string;
+  github?: string;
+  portfolio?: string;
+  companyType?: string;
+  sector?: string;
+  website?: string;
+  cnpj?: string;
+  responsible?: string;
+  responsibleRole?: string;
+  phone?: string;
+  companySize?: string;
+};
+
+export function getProfile(userId: number): Profile {
+  const row = getDb().prepare("SELECT data FROM profiles WHERE user_id = ?").get(userId) as { data: string } | undefined;
+  if (!row) return {};
+  try {
+    return JSON.parse(row.data) as Profile;
+  } catch {
+    return {};
+  }
+}
+
+export function saveProfile(userId: number, data: Profile) {
+  getDb()
+    .prepare(
+      `INSERT INTO profiles (user_id, data, updated_at) VALUES (?,?,datetime('now'))
+       ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
+    )
+    .run(userId, JSON.stringify(data));
+}
+
+/** Share of the profile fields that matter for matching that are filled in (0..1). */
+export function profileCompleteness(p: Profile, role: string): number {
+  const keys: (keyof Profile)[] =
+    role === "mentor"
+      ? ["tools", "areas", "help", "days", "periods", "level", "modality", "weeklyHours"]
+      : role === "mentee"
+        ? ["tools", "learnTools", "areas", "days", "periods", "level", "modality", "goals"]
+        : ["companyType", "sector", "responsible", "city", "website"];
+  const filled = keys.filter((k) => {
+    const v = p[k];
+    return Array.isArray(v) ? v.length > 0 : !!v;
+  });
+  return filled.length / keys.length;
+}
+
+export function notify(userId: number, body: string, link = "") {
+  getDb().prepare("INSERT INTO notifications (user_id, body, link) VALUES (?,?,?)").run(userId, body, link);
 }
 
 export function getUser(id: number): User | null {
@@ -432,4 +631,137 @@ function seedIfEmpty(db: DatabaseSync) {
     30,
     0
   );
+}
+
+function seedEducation(db: DatabaseSync) {
+  if (process.env.SEED_DEMO === "0") return;
+  const { n } = db.prepare("SELECT COUNT(*) AS n FROM profiles").get() as { n: number };
+  if (n > 0) return;
+  const idOf = (email: string) =>
+    (db.prepare("SELECT id FROM users WHERE email = ?").get(email) as { id: number } | undefined)?.id;
+  const ana = idOf("ana@ponte.dev");
+  const carlos = idOf("carlos@ponte.dev");
+  const rita = idOf("rita@ponte.dev");
+  const techcorp = idOf("contato@techcorp.dev");
+  const joao = idOf("joao@email.com");
+  const maria = idOf("maria@email.com");
+  const pedro = idOf("pedro@email.com");
+  if (!ana || !carlos || !rita || !techcorp || !joao || !maria || !pedro) return;
+
+  const put = (id: number, p: Profile) =>
+    db.prepare("INSERT INTO profiles (user_id, data) VALUES (?,?)").run(id, JSON.stringify(p));
+  put(ana, {
+    tools: ["JavaScript", "TypeScript", "React", "Node.js", "Git e GitHub", "Docker"],
+    areas: ["Desenvolvimento Web", "Cloud Computing"],
+    help: ["Revisar codigo", "Carreira e portfolio", "Preparar para entrevistas", "Apoiar open source", "Planejar projetos"],
+    days: ["Terca", "Quinta"], periods: ["Noite"], sessionDuration: "1 hora", weeklyHours: "3 a 5 horas",
+    modality: "Online", level: "Profissional senior", maxMentees: "5", city: "Sao Paulo", state: "SP",
+  });
+  put(carlos, {
+    tools: ["Python", "SQL", "Machine Learning", "Ciencia de Dados", "Power BI", "Git e GitHub"],
+    areas: ["Analise de Dados", "Ciencia de Dados", "Machine Learning", "Inteligencia Artificial"],
+    help: ["Tirar duvidas sobre ferramentas", "Tirar duvidas sobre projetos", "Desenvolver projetos dos mentorados", "Carreira e portfolio"],
+    days: ["Segunda", "Quarta", "Sabado"], periods: ["Noite", "Manha"], sessionDuration: "1 hora", weeklyHours: "3 a 5 horas",
+    modality: "Ambas", level: "Especialista", maxMentees: "4", city: "Recife", state: "PE",
+  });
+  put(rita, {
+    tools: ["Figma", "UX/UI", "Excel"],
+    areas: ["UX/UI"],
+    help: ["Planejar projetos", "Carreira e portfolio", "Preparar para entrevistas"],
+    days: ["Sabado"], periods: ["Manha"], sessionDuration: "2 horas", weeklyHours: "1 a 2 horas",
+    modality: "Presencial", level: "Profissional senior", maxMentees: "3", city: "Belo Horizonte", state: "MG",
+  });
+  put(techcorp, {
+    companyType: "Startup", sector: "Tecnologia", website: "https://techcorp.dev", responsible: "Luiza Prado",
+    responsibleRole: "Coordenadora de talentos", city: "Sao Paulo", state: "SP", companySize: "51 a 200 pessoas",
+  });
+  put(joao, {
+    tools: ["JavaScript", "HTML e CSS", "React"], learnTools: ["TypeScript", "Node.js", "Git e GitHub"],
+    areas: ["Desenvolvimento Web"], days: ["Terca", "Quinta", "Sabado"], periods: ["Noite"], weeklyHours: "6 a 10 horas",
+    modality: "Online", level: "Em transicao de carreira", goals: "Conseguir a primeira vaga como dev junior construindo um portfolio com React e Node.js.",
+    city: "Campinas", state: "SP",
+  });
+  put(maria, {
+    tools: ["Python", "SQL", "Git e GitHub"], learnTools: ["Power BI", "Machine Learning"],
+    areas: ["Analise de Dados", "Automacao"], days: ["Segunda", "Quarta"], periods: ["Noite"], weeklyHours: "3 a 5 horas",
+    modality: "Ambas", level: "Estudante universitario", goals: "Aprender analise de dados na pratica e participar de projetos open source.",
+    city: "Recife", state: "PE",
+  });
+  put(pedro, {
+    tools: ["Excel", "SQL", "Python", "Power BI"], learnTools: ["Ciencia de Dados", "Machine Learning"],
+    areas: ["Analise de Dados", "Ciencia de Dados"], days: ["Sabado"], periods: ["Manha", "Tarde"], weeklyHours: "3 a 5 horas",
+    modality: "Online", level: "Em transicao de carreira", goals: "Migrar de vendas para analise de dados usando minha experiencia de negocio.",
+    city: "Curitiba", state: "PR",
+  });
+
+  const insertProject = db.prepare(
+    `INSERT INTO projects (owner_id, kind, title, summary, description, goals, tools, areas, difficulty, opportunity_type,
+       modality, weekly_hours, slots, repo_url, help_needed, status, visibility)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+  const p1 = Number(insertProject.run(
+    maria, "particular", "Painel de evasao escolar do meu municipio",
+    "Analise de dados publicos do INEP para entender a evasao no ensino medio.",
+    "Projeto pessoal de portfolio. Estou limpando os microdados e quero montar um painel com os principais indicadores.",
+    "Praticar pandas, SQL e visualizacao de dados.", "Python, SQL, Power BI", "Analise de Dados", "Intermediario", "Educacional",
+    "Online", "3 a 5 horas", null, "", "Revisao da modelagem e sugestoes de graficos", "andamento", "private"
+  ).lastInsertRowid);
+  db.prepare("INSERT INTO project_access (project_id, mentor_id) VALUES (?,?)").run(p1, carlos);
+  db.prepare("INSERT INTO project_feedback (project_id, author_id, body) VALUES (?,?,?)").run(
+    p1, carlos, "Boa limpeza dos dados! Proximo passo: separar os indicadores por regiao antes de montar o painel."
+  );
+  const p2 = Number(insertProject.run(
+    ana, "open_source", "Ponte — plataforma aberta de mentoria",
+    "Contribua com a propria plataforma: acessibilidade, testes e novas funcionalidades.",
+    "Projeto open source em Next.js e SQLite. Temos tarefas marcadas como 'primeira contribuicao'.",
+    "Aprender fluxo de pull requests, revisao de codigo e testes.", "TypeScript, React, Git e GitHub", "Desenvolvimento Web",
+    "Iniciante", "Open source", "Online", "1 a 2 horas", 10, "https://github.com/luanlimasoueu/aponte",
+    "Testes automatizados, acessibilidade e documentacao", "aberto", "public"
+  ).lastInsertRowid);
+  db.prepare("INSERT INTO project_applications (project_id, user_id, message, status) VALUES (?,?,?,?)").run(
+    p2, joao, "Quero fazer minha primeira contribuicao open source com React.", "accepted"
+  );
+  const p3 = Number(insertProject.run(
+    techcorp, "empresarial", "Dashboard de indicadores de vendas",
+    "Projeto real da TechCorp para formar analistas de dados juniores.",
+    "Os participantes vao construir um dashboard com dados anonimizados de vendas, com mentoria semanal do time de dados.",
+    "Experiencia pratica com dados reais e apresentacao para stakeholders.", "Python, SQL, Power BI", "Analise de Dados",
+    "Iniciante", "Estagio", "Online", "6 a 10 horas", 3, "", "", "aberto", "public"
+  ).lastInsertRowid);
+  db.prepare("INSERT INTO project_applications (project_id, user_id, message) VALUES (?,?,?)").run(
+    p3, pedro, "Tenho 15 anos de experiencia em vendas e ja uso Power BI e SQL."
+  );
+  insertProject.run(
+    carlos, "educacional", "Trilha guiada: primeiro modelo de Machine Learning",
+    "Projeto educacional em grupo, do dataset ao modelo publicado.",
+    "Quatro semanas, um encontro por semana. Cada etapa termina com uma entrega revisada pelo mentor.",
+    "Entender o ciclo completo de um projeto de ML.", "Python, Machine Learning, Git e GitHub", "Machine Learning, Ciencia de Dados",
+    "Iniciante", "Educacional", "Ambas", "3 a 5 horas", 8, "", "", "aberto", "public"
+  );
+
+  const goal = Number(db.prepare(
+    "INSERT INTO learning_goals (mentee_id, project_id, title, description, due_on) VALUES (?,?,?,?,?)"
+  ).run(maria, p1, "Publicar meu primeiro painel de dados", "Terminar o painel de evasao escolar e apresentar ao mentor.", "2027-02-28").lastInsertRowid);
+  const step = db.prepare("INSERT INTO goal_steps (goal_id, title, done) VALUES (?,?,?)");
+  step.run(goal, "Baixar e limpar os microdados do INEP", 1);
+  step.run(goal, "Modelar as tabelas em SQL", 1);
+  step.run(goal, "Montar o painel no Power BI", 0);
+  step.run(goal, "Apresentar resultados na mentoria", 0);
+  db.prepare("INSERT INTO goal_feedback (goal_id, author_id, body) VALUES (?,?,?)").run(
+    goal, carlos, "Otimo progresso. Para o painel, comece por 3 indicadores e valide com dados de 2 anos."
+  );
+
+  db.prepare("UPDATE events SET category = 'Meetup', city = 'Sao Paulo', state = 'SP', organizer = 'Comunidade Ponte' WHERE category = ''").run();
+  const insertEvent = db.prepare(
+    `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+  insertEvent.run(carlos, "Oficina pratica: analise de dados com Python",
+    "Oficina presencial com notebooks prontos. Traga seu notebook; nao precisa saber programar.",
+    "in_person", "2027-02-06T09:00", "2027-02-06T12:00", "", "Porto Digital — Rua do Apolo, 181", 25, 1,
+    "Oficina pratica", "Recife", "PE", "Carlos Lima");
+  insertEvent.run(techcorp, "Apresentacao de projetos dos mentorados",
+    "Mentorados apresentam projetos desenvolvidos com mentoria. Aberto a empresas e comunidade.",
+    "online", "2027-03-10T19:00", "2027-03-10T21:00", "https://meet.google.com/ponte-projetos", "", null, 0,
+    "Apresentacao de projetos", "", "", "TechCorp");
 }
