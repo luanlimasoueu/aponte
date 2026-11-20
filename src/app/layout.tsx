@@ -4,6 +4,8 @@ import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
 import { logout } from "@/lib/actions";
 import { getDb } from "@/lib/db";
+import { Suspense } from "react";
+import { MobileMenuCloser } from "@/components/mobile-menu-closer";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
@@ -93,7 +95,7 @@ export default async function RootLayout({
                 </>
               )}
             </div>
-            <details className="group relative md:hidden">
+            <details id="menu-mobile" className="group relative md:hidden">
               <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-md border border-line text-muted">
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                   <path d="M2.5 5.5h13M2.5 9h13M2.5 12.5h13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -152,6 +154,9 @@ export default async function RootLayout({
             </details>
           </div>
         </header>
+        <Suspense fallback={null}>
+          <MobileMenuCloser targetId="menu-mobile" />
+        </Suspense>
         <main id="conteudo" className="mx-auto max-w-6xl px-5">{children}</main>
         <footer className="mt-24 border-t border-line">
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-8 text-xs text-muted/70 sm:flex-row">
