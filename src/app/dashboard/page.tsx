@@ -301,7 +301,7 @@ export default async function DashboardPage({
   const sp = await searchParams;
   const db = getDb();
 
-  const links = db
+  const links = await db
     .prepare(
       `SELECT m.id AS mentorship_id, m.status, m.mentor_id, m.mentee_id,
               u.id, u.name, u.headline, u.role, u.skills
@@ -311,13 +311,13 @@ export default async function DashboardPage({
     )
     .all(user.id, user.id, user.id) as unknown as (LinkRow & { status: string })[];
 
-  const myOpps = db
+  const myOpps = await db
     .prepare("SELECT * FROM opportunities WHERE owner_id = ? ORDER BY created_at DESC")
     .all(user.id) as unknown as OppRow[];
 
   const isMentorSide = user.role === "mentor" || user.role === "company";
   const myEvents = isMentorSide
-    ? (db.prepare(
+    ? (await db.prepare(
         `SELECT e.*,
           (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved,
           (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'requested') AS requested
@@ -325,18 +325,18 @@ export default async function DashboardPage({
       ).all(user.id) as unknown as EventRow[])
     : [];
   const eventRegistrations = isMentorSide
-    ? (db.prepare(
+    ? (await db.prepare(
         `SELECT r.*, e.title, e.modality, e.starts_at, u.id AS participant_id, u.name AS participant_name
          FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
          WHERE e.owner_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC, r.created_at DESC`
       ).all(user.id) as unknown as RegistrationRow[])
-    : (db.prepare(
+    : (await db.prepare(
         `SELECT r.*, e.title, e.modality, e.starts_at, u.id AS participant_id, u.name AS participant_name
          FROM event_registrations r JOIN events e ON e.id = r.event_id JOIN users u ON u.id = r.user_id
          WHERE r.user_id = ? AND r.status IN ('requested','approved','waitlist') ORDER BY e.starts_at DESC`
       ).all(user.id) as unknown as RegistrationRow[]);
   const availability = user.role === "mentee"
-    ? (db.prepare("SELECT * FROM availability WHERE user_id = ? ORDER BY weekday, start_time").all(user.id) as unknown as AvailabilityRow[])
+    ? (await db.prepare("SELECT * FROM availability WHERE user_id = ? ORDER BY weekday, start_time").all(user.id) as unknown as AvailabilityRow[])
     : [];
 
   const incoming = links.filter((l) => l.status === "pending" && isMentorSide);
@@ -345,7 +345,7 @@ export default async function DashboardPage({
 
   const myContribs =
     user.role === "mentee"
-      ? (db
+      ? (await db
           .prepare(
             `SELECT c.*,
                (SELECT COUNT(*) FROM endorsements e WHERE e.contribution_id = c.id) AS endorsements,

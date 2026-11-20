@@ -22,28 +22,28 @@ export default async function ProjetoPage({
   const { id } = await params;
   const sp = await searchParams;
   const user = await getSessionUser();
-  const view = getProjectForViewer(Number(id), user);
+  const view = await getProjectForViewer(Number(id), user);
   // Same response for "does not exist" and "not allowed" so private projects are not revealed.
   if (!view) notFound();
   const { project: p, owner, isOwner, grantedMentors, participants } = view;
   const db = getDb();
   const canComment = !!user && (isOwner || grantedMentors.some((m) => m.id === user.id) || participants.some((x) => x.id === user.id));
   const feedback = canComment
-    ? (db.prepare(
+    ? (await db.prepare(
         `SELECT f.*, u.name, u.role FROM project_feedback f JOIN users u ON u.id = f.author_id WHERE f.project_id = ? ORDER BY f.created_at`
       ).all(p.id) as unknown as { id: number; body: string; name: string; role: string; created_at: string }[])
     : [];
   const applications = isOwner
-    ? (db.prepare(
+    ? (await db.prepare(
         `SELECT pa.*, u.name, u.role FROM project_applications pa JOIN users u ON u.id = pa.user_id
          WHERE pa.project_id = ? AND pa.status = 'pending' ORDER BY pa.created_at`
       ).all(p.id) as unknown as { id: number; user_id: number; name: string; role: string; message: string }[])
     : [];
   const myApplication = user && !isOwner
-    ? (db.prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(p.id, user.id) as { status: string } | undefined)
+    ? (await db.prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(p.id, user.id) as { status: string } | undefined)
     : undefined;
   const linkedMentors = isOwner && p.kind === "particular"
-    ? (db.prepare(
+    ? (await db.prepare(
         `SELECT u.id, u.name FROM mentorships m JOIN users u ON u.id = m.mentor_id
          WHERE m.mentee_id = ? AND m.status = 'active' AND u.role = 'mentor' ORDER BY u.name`
       ).all(user!.id) as unknown as { id: number; name: string }[]).filter((m) => !grantedMentors.some((g) => g.id === m.id))

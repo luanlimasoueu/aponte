@@ -17,7 +17,7 @@ export type RoleLandingConfig = {
 export async function RoleLanding({ config }: { config: RoleLandingConfig }) {
   const user = await getSessionUser();
   const sameRole = user?.role === config.role;
-  const completeness = sameRole ? Math.round(profileCompleteness(getProfile(user!.id), user!.role) * 100) : 0;
+  const completeness = sameRole ? Math.round(profileCompleteness(await getProfile(user!.id), user!.role) * 100) : 0;
   return (
     <div className="py-12">
       <Eyebrow>{config.eyebrow}</Eyebrow>

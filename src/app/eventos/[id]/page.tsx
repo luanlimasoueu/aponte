@@ -21,7 +21,7 @@ export default async function EventoPage({
   const sp = await searchParams;
   const user = await getSessionUser();
   const db = getDb();
-  const e = db
+  const e = await db
     .prepare(
       `SELECT e.*, u.name AS owner_name,
         (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved
@@ -30,7 +30,7 @@ export default async function EventoPage({
     .get(Number(id)) as (PlatformEvent & { owner_name: string; approved: number }) | undefined;
   if (!e) notFound();
   const registration = user?.role === "mentee"
-    ? (db.prepare("SELECT status FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string } | undefined)?.status
+    ? (await db.prepare("SELECT status FROM event_registrations WHERE event_id = ? AND user_id = ?").get(e.id, user.id) as { status: string } | undefined)?.status
     : undefined;
   const full = e.capacity !== null && e.approved >= e.capacity;
   const ret = `/eventos/${e.id}`;

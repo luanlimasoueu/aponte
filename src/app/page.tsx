@@ -122,17 +122,17 @@ function NetworkVisual() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
   const db = getDb();
-  const events = db
+  const events = await db
     .prepare("SELECT * FROM events WHERE status = 'published' AND ends_at >= ? ORDER BY starts_at LIMIT 3")
     .all(new Date().toISOString().slice(0, 16)) as unknown as PlatformEvent[];
-  const count = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
+  const count = async (sql: string) => ((await db.prepare(sql).get()) as { n: number }).n;
   const stats = [
-    { value: count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentor' AND account_status = 'active'"), label: "mentores ativos" },
-    { value: count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentee' AND account_status = 'active'"), label: "mentorados" },
-    { value: count("SELECT COUNT(*) AS n FROM mentorships WHERE status = 'active'"), label: "mentorias em andamento" },
-    { value: count("SELECT COUNT(*) AS n FROM projects WHERE kind != 'particular' AND visibility = 'public' AND status NOT IN ('rascunho','arquivado')"), label: "projetos abertos a comunidade" },
+    { value: await count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentor' AND account_status = 'active'"), label: "mentores ativos" },
+    { value: await count("SELECT COUNT(*) AS n FROM users WHERE role = 'mentee' AND account_status = 'active'"), label: "mentorados" },
+    { value: await count("SELECT COUNT(*) AS n FROM mentorships WHERE status = 'active'"), label: "mentorias em andamento" },
+    { value: await count("SELECT COUNT(*) AS n FROM projects WHERE kind != 'particular' AND visibility = 'public' AND status NOT IN ('rascunho','arquivado')"), label: "projetos abertos a comunidade" },
   ];
   return (
     <div>

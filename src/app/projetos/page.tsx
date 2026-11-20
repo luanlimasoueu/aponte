@@ -21,10 +21,10 @@ export default async function ProjetosPage({ searchParams }: { searchParams: Pro
     modality: val(sp, "modality", MODALITIES),
     q: val(sp, "q"),
   };
-  const projects = listPublicProjects(filters);
-  const mine = user ? listOwnProjects(user.id) : [];
-  const shared = user?.role === "mentor" ? listSharedWithMentor(user.id) : [];
-  const participating = user ? listParticipating(user.id) : [];
+  const projects = await listPublicProjects(filters);
+  const mine = user ? await listOwnProjects(user.id) : [];
+  const shared = user?.role === "mentor" ? await listSharedWithMentor(user.id) : [];
+  const participating = user ? await listParticipating(user.id) : [];
 
   return (
     <div className="pb-10">

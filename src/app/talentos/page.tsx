@@ -19,7 +19,7 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
   const like = `%${q}%`;
 
   const ownProjects = user && user.role !== "mentee"
-    ? (db.prepare("SELECT * FROM projects WHERE owner_id = ? AND kind != 'particular' ORDER BY updated_at DESC").all(user.id) as unknown as Project[])
+    ? (await db.prepare("SELECT * FROM projects WHERE owner_id = ? AND kind != 'particular' ORDER BY updated_at DESC").all(user.id) as unknown as Project[])
     : [];
   const projectId = Number(val(sp, "projeto")) || 0;
   const project = ownProjects.find((p) => p.id === projectId);
@@ -32,7 +32,7 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
         modality: val(sp, "modality", MODALITIES),
       };
 
-  const mentees = db
+  const mentees = await db
     .prepare(
       `SELECT u.*,
          (SELECT COUNT(*) FROM contributions c WHERE c.user_id = u.id) AS contributions,
@@ -40,20 +40,20 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
          (SELECT COUNT(*) FROM mentorships m WHERE m.mentee_id = u.id AND m.status = 'active') AS mentors
        FROM users u
        WHERE u.role = 'mentee' AND u.account_status = 'active' AND u.public_profile_consent = 1
-         AND (u.name LIKE ? OR u.skills LIKE ? OR u.headline LIKE ? OR u.bio LIKE ?)`
+         AND (LOWER(u.name) LIKE LOWER(?) OR LOWER(u.skills) LIKE LOWER(?) OR LOWER(u.headline) LIKE LOWER(?) OR LOWER(u.bio) LIKE LOWER(?))`
     )
     .all(like, like, like, like) as unknown as TalentRow[];
 
   const results = rank(
-    mentees
-      .map((t) => {
-        const p = getProfile(t.id);
+    (await Promise.all(mentees
+      .map(async (t) => {
+        const p = await getProfile(t.id);
         const match = matchMentee(query, {
           knownTools: p.tools ?? [], learnTools: p.learnTools ?? [], areas: p.areas ?? [], level: p.level ?? "",
           goals: p.goals ?? "", days: p.days ?? [], periods: p.periods ?? [], modality: p.modality ?? "",
         });
         return match ? { ...t, profile: p, match, completeness: profileCompleteness(p, "mentee") + t.endorsements / 100 } : null;
-      })
+      })))
       .filter(<T,>(x: T | null): x is T => x !== null)
   );
   const hasCriteria = results[0]?.match.criteria.some((c) => c.score !== null) ?? false;

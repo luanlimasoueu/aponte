@@ -1,7 +1,5 @@
-import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
+import { getDriver, setIdTables, type Param, type Row, type RunResult } from "./sql";
 
 export type Role = "mentor" | "mentee" | "company";
 export type AccountStatus = "pending" | "active" | "rejected";
@@ -341,55 +339,102 @@ export function verifyPassword(password: string, stored: string): boolean {
   return candidate.length === expected.length && crypto.timingSafeEqual(candidate, expected);
 }
 
-let _db: DatabaseSync | null = null;
+export type Statement = {
+  get(...params: Param[]): Promise<Row | undefined>;
+  all(...params: Param[]): Promise<Row[]>;
+  run(...params: Param[]): Promise<RunResult>;
+};
+export type Db = { dialect: "sqlite" | "postgres"; prepare(sql: string): Statement; exec(sql: string): Promise<void> };
 
-export function getDb(): DatabaseSync {
-  if (_db) return _db;
-  // Vercel functions only allow writes in /tmp: data there is temporary (demo only).
-  const dbPath =
-    process.env.DATABASE_PATH ??
-    (process.env.VERCEL ? path.join("/tmp", "ponte.db") : path.join(process.cwd(), "data", "ponte.db"));
-  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new DatabaseSync(dbPath);
-  db.exec("PRAGMA journal_mode = WAL;");
-  db.exec(SCHEMA);
-  ensureMigrations(db);
-  _db = db;
-  seedIfEmpty(db);
-  seedEducation(db);
-  return db;
+function makeDb(waitReady: boolean): Db {
+  const d = getDriver();
+  const ready = () => (waitReady ? ensureReady() : Promise.resolve());
+  return {
+    dialect: d.dialect,
+    prepare: (sql) => ({
+      get: async (...p) => (await ready(), d.get(sql, p)),
+      all: async (...p) => (await ready(), d.all(sql, p)),
+      run: async (...p) => (await ready(), d.run(sql, p)),
+    }),
+    exec: async (sql) => {
+      await ready();
+      await d.exec(sql);
+    },
+  };
 }
 
-function ensureMigrations(db: DatabaseSync) {
-  const columns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
-  const additions = [
-    ["must_change_password", "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;"],
-    ["account_status", "ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active';"],
-    ["image_consent", "ALTER TABLE users ADD COLUMN image_consent INTEGER NOT NULL DEFAULT 0;"],
-    ["public_profile_consent", "ALTER TABLE users ADD COLUMN public_profile_consent INTEGER NOT NULL DEFAULT 0;"],
-    ["public_profile_consent_at", "ALTER TABLE users ADD COLUMN public_profile_consent_at TEXT;"],
-    ["employment_terms_accepted_at", "ALTER TABLE users ADD COLUMN employment_terms_accepted_at TEXT;"],
-    ["code_of_conduct_accepted_at", "ALTER TABLE users ADD COLUMN code_of_conduct_accepted_at TEXT;"],
-  ];
-  for (const [column, sql] of additions) {
-    if (!columns.some((existing) => existing.name === column)) db.exec(sql);
-  }
-  addColumns(db, "events", {
+let _db: Db | null = null;
+
+/** Returns the database. Schema, migrations and demo seed run once, before the first query. */
+export function getDb(): Db {
+  return (_db ??= makeDb(true));
+}
+
+let _ready: Promise<void> | null = null;
+function ensureReady(): Promise<void> {
+  _ready ??= init().catch((e) => {
+    _ready = null;
+    throw e;
+  });
+  return _ready;
+}
+
+const PG_DATETIME = `CREATE OR REPLACE FUNCTION datetime(text) RETURNS text LANGUAGE sql VOLATILE AS
+$fn$ SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') $fn$;`;
+
+function postgresSchema(schema: string): string {
+  return schema
+    .replace(/INTEGER PRIMARY KEY AUTOINCREMENT/g, "SERIAL PRIMARY KEY")
+    .replace(/expires_at INTEGER/g, "expires_at BIGINT");
+}
+
+async function init() {
+  const d = getDriver();
+  const db = makeDb(false);
+  setIdTables([...SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(\s*id INTEGER PRIMARY KEY AUTOINCREMENT/g)].map((m) => m[1]));
+  await d.withLock(async () => {
+    if (d.dialect === "postgres") {
+      await d.exec(PG_DATETIME);
+      await d.exec(postgresSchema(SCHEMA));
+    } else {
+      await d.exec(SCHEMA);
+    }
+    await ensureMigrations(db);
+    await seedIfEmpty(db);
+    await seedEducation(db);
+  });
+}
+
+async function ensureMigrations(db: Db) {
+  await addColumns(db, "users", {
+    must_change_password: "INTEGER NOT NULL DEFAULT 0",
+    account_status: "TEXT NOT NULL DEFAULT 'active'",
+    image_consent: "INTEGER NOT NULL DEFAULT 0",
+    public_profile_consent: "INTEGER NOT NULL DEFAULT 0",
+    public_profile_consent_at: "TEXT",
+    employment_terms_accepted_at: "TEXT",
+    code_of_conduct_accepted_at: "TEXT",
+  });
+  await addColumns(db, "events", {
     category: "TEXT NOT NULL DEFAULT ''",
     city: "TEXT NOT NULL DEFAULT ''",
     state: "TEXT NOT NULL DEFAULT ''",
     organizer: "TEXT NOT NULL DEFAULT ''",
   });
-  addColumns(db, "mentorships", {
+  await addColumns(db, "mentorships", {
     objective: "TEXT NOT NULL DEFAULT ''",
     message: "TEXT NOT NULL DEFAULT ''",
   });
 }
 
-function addColumns(db: DatabaseSync, table: string, cols: Record<string, string>) {
-  const existing = (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name);
+async function addColumns(db: Db, table: string, cols: Record<string, string>) {
+  if (db.dialect === "postgres") {
+    for (const [name, def] of Object.entries(cols)) await db.exec(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${name} ${def};`);
+    return;
+  }
+  const existing = (await db.prepare(`PRAGMA table_info(${table})`).all()).map((c) => c.name);
   for (const [name, def] of Object.entries(cols)) {
-    if (!existing.includes(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def};`);
+    if (!existing.includes(name)) await db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${def};`);
   }
 }
 
@@ -422,8 +467,8 @@ export type Profile = {
   companySize?: string;
 };
 
-export function getProfile(userId: number): Profile {
-  const row = getDb().prepare("SELECT data FROM profiles WHERE user_id = ?").get(userId) as { data: string } | undefined;
+export async function getProfile(userId: number): Promise<Profile> {
+  const row = (await getDb().prepare("SELECT data FROM profiles WHERE user_id = ?").get(userId)) as { data: string } | undefined;
   if (!row) return {};
   try {
     return JSON.parse(row.data) as Profile;
@@ -432,8 +477,8 @@ export function getProfile(userId: number): Profile {
   }
 }
 
-export function saveProfile(userId: number, data: Profile) {
-  getDb()
+export async function saveProfile(userId: number, data: Profile) {
+  await getDb()
     .prepare(
       `INSERT INTO profiles (user_id, data, updated_at) VALUES (?,?,datetime('now'))
        ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`
@@ -456,33 +501,31 @@ export function profileCompleteness(p: Profile, role: string): number {
   return filled.length / keys.length;
 }
 
-export function notify(userId: number, body: string, link = "") {
-  getDb().prepare("INSERT INTO notifications (user_id, body, link) VALUES (?,?,?)").run(userId, body, link);
+export async function notify(userId: number, body: string, link = "") {
+  await getDb().prepare("INSERT INTO notifications (user_id, body, link) VALUES (?,?,?)").run(userId, body, link);
 }
 
-export function getUser(id: number): User | null {
-  const row = getDb().prepare("SELECT * FROM users WHERE id = ?").get(id) as
+export async function getUser(id: number): Promise<User | null> {
+  const row = (await getDb().prepare("SELECT * FROM users WHERE id = ?").get(id)) as
     | User
     | undefined;
   return row ?? null;
 }
 
-export function audit(
+export async function audit(
   actorId: number | null,
   action: string,
   entityType: string,
   entityId: number | null
 ) {
-  getDb()
+  await getDb()
     .prepare("INSERT INTO audit_log (actor_id, action, entity_type, entity_id) VALUES (?,?,?,?)")
     .run(actorId, action, entityType, entityId);
 }
 
-function seedIfEmpty(db: DatabaseSync) {
+async function seedIfEmpty(db: Db) {
   if (process.env.SEED_DEMO === "0") return;
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM users").get() as {
-    n: number;
-  };
+  const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM users").get()) as { n: number };
   if (n > 0) return;
 
   const pw = hashPassword("senha123");
@@ -502,116 +545,96 @@ function seedIfEmpty(db: DatabaseSync) {
     "INSERT INTO opportunities (owner_id, type, title, description, skills) VALUES (?,?,?,?,?)"
   );
 
-  const ana = Number(
-    insertUser.run(
+  const ana = await newId(insertUser, 
       "ana@ponte.dev", pw, "Ana Souza", "mentor",
       "Engenheira de software senior - 15 anos de estrada",
       "Construi sistemas de pagamento e plataformas em escala. Mentoro pessoas em transicao para desenvolvimento e quem busca a primeira vaga.",
       "Backend, Node.js, Arquitetura, Carreira, Entrevistas"
-    ).lastInsertRowid
-  );
-  const carlos = Number(
-    insertUser.run(
+    );
+  const carlos = await newId(insertUser, 
       "carlos@ponte.dev", pw, "Carlos Lima", "mentor",
       "Cientista de dados - ex-big tech",
       "Apaixonado por ensinar estatistica aplicada e machine learning do zero. Ajudo a montar portfolio de dados.",
       "Python, Machine Learning, SQL, Portfolio"
-    ).lastInsertRowid
-  );
-  const rita = Number(
-    insertUser.run(
+    );
+  const rita = await newId(insertUser, 
       "rita@ponte.dev", pw, "Rita Fernandes", "mentor",
       "Head de Produto",
       "De QA a lideranca de produto. Mentoro quem quer entrar em produto, UX ou gestao.",
       "Produto, UX, Discovery, Lideranca"
-    ).lastInsertRowid
-  );
-  const techcorp = Number(
-    insertUser.run(
+    );
+  const techcorp = await newId(insertUser, 
       "contato@techcorp.dev", pw, "TechCorp", "company",
       "Startup de tecnologia - programa de formacao proprio",
       "Mentoramos e formamos talentos juniores dentro dos nossos projetos reais.",
       "Programa de formacao, Estagio, Junior"
-    ).lastInsertRowid
-  );
-  const joao = Number(
-    insertUser.run(
+    );
+  const joao = await newId(insertUser, 
       "joao@email.com", pw, "Joao Pedro", "mentee",
       "Em transicao para desenvolvimento web",
       "Ex-professor aprendendo a programar. Buscando primeira oportunidade como dev junior.",
       "JavaScript, React, HTML, CSS"
-    ).lastInsertRowid
-  );
-  const maria = Number(
-    insertUser.run(
+    );
+  const maria = await newId(insertUser, 
       "maria@email.com", pw, "Maria Clara", "mentee",
       "Estudante de ADS - buscando primeiro emprego",
       "2o semestre de Analise e Desenvolvimento de Sistemas. Gosto de dados e automacao.",
       "Python, SQL, Git"
-    ).lastInsertRowid
-  );
-  const pedro = Number(
-    insertUser.run(
+    );
+  const pedro = await newId(insertUser, 
       "pedro@email.com", pw, "Pedro Santos", "mentee",
       "42 anos - migrando de vendas para dados",
       "15 anos em vendas, agora estudando analise de dados. Experiencia de negocio + ferramentas novas.",
       "Excel, SQL, Python, Power BI"
-    ).lastInsertRowid
-  );
+    );
 
-  insertMentorship.run(ana, joao, "active");
-  insertMentorship.run(ana, maria, "active");
-  insertMentorship.run(carlos, maria, "active");
-  insertMentorship.run(rita, joao, "pending");
-  insertMentorship.run(techcorp, pedro, "active");
+  await insertMentorship.run(ana, joao, "active");
+  await insertMentorship.run(ana, maria, "active");
+  await insertMentorship.run(carlos, maria, "active");
+  await insertMentorship.run(rita, joao, "pending");
+  await insertMentorship.run(techcorp, pedro, "active");
 
-  const c1 = Number(
-    insertContribution.run(
+  const c1 = await newId(insertContribution, 
       joao, "PR aceito no repositorio open-source 'dev-brasil-docs'",
       "https://github.com", "open_source",
       "Corrigi e traduzi a documentacao de contribuicao do projeto."
-    ).lastInsertRowid
-  );
-  insertContribution.run(
+    );
+  await insertContribution.run(
     joao, "Clone da landing page de um e-commerce",
     "https://github.com", "projeto",
     "Reproduzi uma landing page real usando apenas HTML, CSS e um pouco de JS."
   );
-  const c2 = Number(
-    insertContribution.run(
+  const c2 = await newId(insertContribution, 
       maria, "Analise exploratoria do dataset 'Desmatamento na Amazonia'",
       "https://github.com", "projeto",
       "Notebook com limpeza de dados, graficos e insights sobre series historicas."
-    ).lastInsertRowid
-  );
-  insertContribution.run(
+    );
+  await insertContribution.run(
     maria, "Lightning talk no meetup PyLadies",
     "", "evento",
     "Apresentei 10 minutos sobre web scraping etico para uma plateia de 80 pessoas."
   );
-  const c3 = Number(
-    insertContribution.run(
+  const c3 = await newId(insertContribution, 
       pedro, "Dashboard de pipeline de vendas em Power BI",
       "", "projeto",
       "Automatizei o relatorio mensal da equipe com dados do CRM exportados via SQL."
-    ).lastInsertRowid
-  );
+    );
 
-  insertEndorsement.run(c1, ana);
-  insertEndorsement.run(c2, carlos);
-  insertEndorsement.run(c3, techcorp);
+  await insertEndorsement.run(c1, ana);
+  await insertEndorsement.run(c2, carlos);
+  await insertEndorsement.run(c3, techcorp);
 
-  insertOpportunity.run(
+  await insertOpportunity.run(
     techcorp, "vaga", "Programa de Formacao TechCorp 2026",
     "6 meses de formacao remunerada para devs juniores dentro dos nossos times. Mentoria dedicada e projeto real no final.",
     "Logica, Git, Vontade de aprender"
   );
-  insertOpportunity.run(
+  await insertOpportunity.run(
     ana, "open_source", "Contribuidores para o Ponte (este projeto!)",
     "A plataforma e open source. Procuramos contribuidores de todos os niveis - otima primeira contribuicao.",
     "TypeScript, Next.js, SQLite"
   );
-  insertOpportunity.run(
+  await insertOpportunity.run(
     rita, "evento", "Workshop: discovery de produto na pratica",
     "Workshop gratuito de 3h. Vamos descobrir um produto do zero em grupo. Aberto a mentorados e mentores.",
     "Produto, UX, Curiosidade"
@@ -621,7 +644,7 @@ function seedIfEmpty(db: DatabaseSync) {
     `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval)
      VALUES (?,?,?,?,?,?,?,?,?,?)`
   );
-  insertEvent.run(
+  await insertEvent.run(
     ana,
     "Encontro Ponte: primeiros passos em tecnologia",
     "Uma conversa aberta para quem esta iniciando ou fazendo transicao de carreira. Traga suas perguntas.",
@@ -635,68 +658,68 @@ function seedIfEmpty(db: DatabaseSync) {
   );
 }
 
-function seedEducation(db: DatabaseSync) {
+async function seedEducation(db: Db) {
   if (process.env.SEED_DEMO === "0") return;
-  const { n } = db.prepare("SELECT COUNT(*) AS n FROM profiles").get() as { n: number };
+  const { n } = (await db.prepare("SELECT COUNT(*) AS n FROM profiles").get()) as { n: number };
   if (n > 0) return;
-  const idOf = (email: string) =>
-    (db.prepare("SELECT id FROM users WHERE email = ?").get(email) as { id: number } | undefined)?.id;
-  const ana = idOf("ana@ponte.dev");
-  const carlos = idOf("carlos@ponte.dev");
-  const rita = idOf("rita@ponte.dev");
-  const techcorp = idOf("contato@techcorp.dev");
-  const joao = idOf("joao@email.com");
-  const maria = idOf("maria@email.com");
-  const pedro = idOf("pedro@email.com");
+  const idOf = async (email: string) =>
+    ((await db.prepare("SELECT id FROM users WHERE email = ?").get(email)) as { id: number } | undefined)?.id;
+  const ana = await idOf("ana@ponte.dev");
+  const carlos = await idOf("carlos@ponte.dev");
+  const rita = await idOf("rita@ponte.dev");
+  const techcorp = await idOf("contato@techcorp.dev");
+  const joao = await idOf("joao@email.com");
+  const maria = await idOf("maria@email.com");
+  const pedro = await idOf("pedro@email.com");
   if (!ana || !carlos || !rita || !techcorp || !joao || !maria || !pedro) return;
   // Demo accounts accept public visibility so the public pages have content to show.
-  db.prepare(
+  await db.prepare(
     `UPDATE users SET public_profile_consent = 1, public_profile_consent_at = datetime('now'),
        employment_terms_accepted_at = COALESCE(employment_terms_accepted_at, datetime('now')),
        code_of_conduct_accepted_at = COALESCE(code_of_conduct_accepted_at, datetime('now'))
      WHERE id IN (?,?,?,?,?,?,?)`
   ).run(ana, carlos, rita, techcorp, joao, maria, pedro);
 
-  const put = (id: number, p: Profile) =>
-    db.prepare("INSERT INTO profiles (user_id, data) VALUES (?,?)").run(id, JSON.stringify(p));
-  put(ana, {
+  const put = async (id: number, p: Profile) =>
+    await db.prepare("INSERT INTO profiles (user_id, data) VALUES (?,?)").run(id, JSON.stringify(p));
+  await put(ana, {
     tools: ["JavaScript", "TypeScript", "React", "Node.js", "Git e GitHub", "Docker"],
     areas: ["Desenvolvimento Web", "Cloud Computing"],
     help: ["Revisar codigo", "Carreira e portfolio", "Preparar para entrevistas", "Apoiar open source", "Planejar projetos"],
     days: ["Terca", "Quinta"], periods: ["Noite"], sessionDuration: "1 hora", weeklyHours: "3 a 5 horas",
     modality: "Online", level: "Profissional senior", maxMentees: "5", city: "Sao Paulo", state: "SP",
   });
-  put(carlos, {
+  await put(carlos, {
     tools: ["Python", "SQL", "Machine Learning", "Ciencia de Dados", "Power BI", "Git e GitHub"],
     areas: ["Analise de Dados", "Ciencia de Dados", "Machine Learning", "Inteligencia Artificial"],
     help: ["Tirar duvidas sobre ferramentas", "Tirar duvidas sobre projetos", "Desenvolver projetos dos mentorados", "Carreira e portfolio"],
     days: ["Segunda", "Quarta", "Sabado"], periods: ["Noite", "Manha"], sessionDuration: "1 hora", weeklyHours: "3 a 5 horas",
     modality: "Ambas", level: "Especialista", maxMentees: "4", city: "Recife", state: "PE",
   });
-  put(rita, {
+  await put(rita, {
     tools: ["Figma", "UX/UI", "Excel"],
     areas: ["UX/UI"],
     help: ["Planejar projetos", "Carreira e portfolio", "Preparar para entrevistas"],
     days: ["Sabado"], periods: ["Manha"], sessionDuration: "2 horas", weeklyHours: "1 a 2 horas",
     modality: "Presencial", level: "Profissional senior", maxMentees: "3", city: "Belo Horizonte", state: "MG",
   });
-  put(techcorp, {
+  await put(techcorp, {
     companyType: "Startup", sector: "Tecnologia", website: "https://techcorp.dev", responsible: "Luiza Prado",
     responsibleRole: "Coordenadora de talentos", city: "Sao Paulo", state: "SP", companySize: "51 a 200 pessoas",
   });
-  put(joao, {
+  await put(joao, {
     tools: ["JavaScript", "HTML e CSS", "React"], learnTools: ["TypeScript", "Node.js", "Git e GitHub"],
     areas: ["Desenvolvimento Web"], days: ["Terca", "Quinta", "Sabado"], periods: ["Noite"], weeklyHours: "6 a 10 horas",
     modality: "Online", level: "Em transicao de carreira", goals: "Conseguir a primeira vaga como dev junior construindo um portfolio com React e Node.js.",
     city: "Campinas", state: "SP",
   });
-  put(maria, {
+  await put(maria, {
     tools: ["Python", "SQL", "Git e GitHub"], learnTools: ["Power BI", "Machine Learning"],
     areas: ["Analise de Dados", "Automacao"], days: ["Segunda", "Quarta"], periods: ["Noite"], weeklyHours: "3 a 5 horas",
     modality: "Ambas", level: "Estudante universitario", goals: "Aprender analise de dados na pratica e participar de projetos open source.",
     city: "Recife", state: "PE",
   });
-  put(pedro, {
+  await put(pedro, {
     tools: ["Excel", "SQL", "Python", "Power BI"], learnTools: ["Ciencia de Dados", "Machine Learning"],
     areas: ["Analise de Dados", "Ciencia de Dados"], days: ["Sabado"], periods: ["Manha", "Tarde"], weeklyHours: "3 a 5 horas",
     modality: "Online", level: "Em transicao de carreira", goals: "Migrar de vendas para analise de dados usando minha experiencia de negocio.",
@@ -708,39 +731,39 @@ function seedEducation(db: DatabaseSync) {
        modality, weekly_hours, slots, repo_url, help_needed, status, visibility)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
-  const p1 = Number(insertProject.run(
+  const p1 = await newId(insertProject, 
     maria, "particular", "Painel de evasao escolar do meu municipio",
     "Analise de dados publicos do INEP para entender a evasao no ensino medio.",
     "Projeto pessoal de portfolio. Estou limpando os microdados e quero montar um painel com os principais indicadores.",
     "Praticar pandas, SQL e visualizacao de dados.", "Python, SQL, Power BI", "Analise de Dados", "Intermediario", "Educacional",
     "Online", "3 a 5 horas", null, "", "Revisao da modelagem e sugestoes de graficos", "andamento", "private"
-  ).lastInsertRowid);
-  db.prepare("INSERT INTO project_access (project_id, mentor_id) VALUES (?,?)").run(p1, carlos);
-  db.prepare("INSERT INTO project_feedback (project_id, author_id, body) VALUES (?,?,?)").run(
+  );
+  await db.prepare("INSERT INTO project_access (project_id, mentor_id) VALUES (?,?)").run(p1, carlos);
+  await db.prepare("INSERT INTO project_feedback (project_id, author_id, body) VALUES (?,?,?)").run(
     p1, carlos, "Boa limpeza dos dados! Proximo passo: separar os indicadores por regiao antes de montar o painel."
   );
-  const p2 = Number(insertProject.run(
+  const p2 = await newId(insertProject, 
     ana, "open_source", "Ponte — plataforma aberta de mentoria",
     "Contribua com a propria plataforma: acessibilidade, testes e novas funcionalidades.",
     "Projeto open source em Next.js e SQLite. Temos tarefas marcadas como 'primeira contribuicao'.",
     "Aprender fluxo de pull requests, revisao de codigo e testes.", "TypeScript, React, Git e GitHub", "Desenvolvimento Web",
     "Iniciante", "Open source", "Online", "1 a 2 horas", 10, "https://github.com/luanlimasoueu/aponte",
     "Testes automatizados, acessibilidade e documentacao", "aberto", "public"
-  ).lastInsertRowid);
-  db.prepare("INSERT INTO project_applications (project_id, user_id, message, status) VALUES (?,?,?,?)").run(
+  );
+  await db.prepare("INSERT INTO project_applications (project_id, user_id, message, status) VALUES (?,?,?,?)").run(
     p2, joao, "Quero fazer minha primeira contribuicao open source com React.", "accepted"
   );
-  const p3 = Number(insertProject.run(
+  const p3 = await newId(insertProject, 
     techcorp, "empresarial", "Dashboard de indicadores de vendas",
     "Projeto real da TechCorp para formar analistas de dados juniores.",
     "Os participantes vao construir um dashboard com dados anonimizados de vendas, com mentoria semanal do time de dados.",
     "Experiencia pratica com dados reais e apresentacao para stakeholders.", "Python, SQL, Power BI", "Analise de Dados",
     "Iniciante", "Estagio", "Online", "6 a 10 horas", 3, "", "", "aberto", "public"
-  ).lastInsertRowid);
-  db.prepare("INSERT INTO project_applications (project_id, user_id, message) VALUES (?,?,?)").run(
+  );
+  await db.prepare("INSERT INTO project_applications (project_id, user_id, message) VALUES (?,?,?)").run(
     p3, pedro, "Tenho 15 anos de experiencia em vendas e ja uso Power BI e SQL."
   );
-  insertProject.run(
+  await insertProject.run(
     carlos, "educacional", "Trilha guiada: primeiro modelo de Machine Learning",
     "Projeto educacional em grupo, do dataset ao modelo publicado.",
     "Quatro semanas, um encontro por semana. Cada etapa termina com uma entrega revisada pelo mentor.",
@@ -748,29 +771,34 @@ function seedEducation(db: DatabaseSync) {
     "Iniciante", "Educacional", "Ambas", "3 a 5 horas", 8, "", "", "aberto", "public"
   );
 
-  const goal = Number(db.prepare(
-    "INSERT INTO learning_goals (mentee_id, project_id, title, description, due_on) VALUES (?,?,?,?,?)"
-  ).run(maria, p1, "Publicar meu primeiro painel de dados", "Terminar o painel de evasao escolar e apresentar ao mentor.", "2027-02-28").lastInsertRowid);
+  const goal = await newId(
+    db.prepare("INSERT INTO learning_goals (mentee_id, project_id, title, description, due_on) VALUES (?,?,?,?,?)"),
+    maria, p1, "Publicar meu primeiro painel de dados", "Terminar o painel de evasao escolar e apresentar ao mentor.", "2027-02-28"
+  );
   const step = db.prepare("INSERT INTO goal_steps (goal_id, title, done) VALUES (?,?,?)");
-  step.run(goal, "Baixar e limpar os microdados do INEP", 1);
-  step.run(goal, "Modelar as tabelas em SQL", 1);
-  step.run(goal, "Montar o painel no Power BI", 0);
-  step.run(goal, "Apresentar resultados na mentoria", 0);
-  db.prepare("INSERT INTO goal_feedback (goal_id, author_id, body) VALUES (?,?,?)").run(
+  await step.run(goal, "Baixar e limpar os microdados do INEP", 1);
+  await step.run(goal, "Modelar as tabelas em SQL", 1);
+  await step.run(goal, "Montar o painel no Power BI", 0);
+  await step.run(goal, "Apresentar resultados na mentoria", 0);
+  await db.prepare("INSERT INTO goal_feedback (goal_id, author_id, body) VALUES (?,?,?)").run(
     goal, carlos, "Otimo progresso. Para o painel, comece por 3 indicadores e valide com dados de 2 anos."
   );
 
-  db.prepare("UPDATE events SET category = 'Meetup', city = 'Sao Paulo', state = 'SP', organizer = 'Comunidade Ponte' WHERE category = ''").run();
+  await db.prepare("UPDATE events SET category = 'Meetup', city = 'Sao Paulo', state = 'SP', organizer = 'Comunidade Ponte' WHERE category = ''").run();
   const insertEvent = db.prepare(
     `INSERT INTO events (owner_id, title, description, modality, starts_at, ends_at, online_url, location, capacity, require_approval, category, city, state, organizer)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
-  insertEvent.run(carlos, "Oficina pratica: analise de dados com Python",
+  await insertEvent.run(carlos, "Oficina pratica: analise de dados com Python",
     "Oficina presencial com notebooks prontos. Traga seu notebook; nao precisa saber programar.",
     "in_person", "2027-02-06T09:00", "2027-02-06T12:00", "", "Porto Digital — Rua do Apolo, 181", 25, 1,
     "Oficina pratica", "Recife", "PE", "Carlos Lima");
-  insertEvent.run(techcorp, "Apresentacao de projetos dos mentorados",
+  await insertEvent.run(techcorp, "Apresentacao de projetos dos mentorados",
     "Mentorados apresentam projetos desenvolvidos com mentoria. Aberto a empresas e comunidade.",
     "online", "2027-03-10T19:00", "2027-03-10T21:00", "https://meet.google.com/ponte-projetos", "", null, 0,
     "Apresentacao de projetos", "", "", "TechCorp");
+}
+
+async function newId(stmt: Statement, ...params: Param[]): Promise<number> {
+  return (await stmt.run(...params)).lastInsertRowid;
 }

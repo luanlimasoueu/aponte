@@ -35,7 +35,7 @@ export default async function EventosPage({
 }) {
   const [sp, user] = await Promise.all([searchParams, getSessionUser()]);
   const db = getDb();
-  const allEvents = db.prepare(
+  const allEvents = await db.prepare(
     `SELECT e.*, u.name AS owner_name,
       (SELECT COUNT(*) FROM event_registrations r WHERE r.event_id = e.id AND r.status = 'approved') AS approved
      FROM events e JOIN users u ON u.id = e.owner_id
@@ -49,7 +49,7 @@ export default async function EventosPage({
     (e) => (!fModality || e.modality === fModality) && (!fCategory || e.category === fCategory) && (!fCity || e.city === fCity)
   );
   const registrations = user?.role === "mentee"
-    ? new Map((db.prepare("SELECT event_id, status FROM event_registrations WHERE user_id = ?").all(user.id) as { event_id: number; status: string }[]).map((r) => [r.event_id, r.status]))
+    ? new Map((await db.prepare("SELECT event_id, status FROM event_registrations WHERE user_id = ?").all(user.id) as { event_id: number; status: string }[]).map((r) => [r.event_id, r.status]))
     : new Map<number, string>();
 
   return (

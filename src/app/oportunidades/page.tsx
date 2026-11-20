@@ -31,7 +31,7 @@ export default async function OportunidadesPage({
   const sp = await searchParams;
   const type = sp.type ?? "";
 
-  const rows = getDb()
+  const rows = await getDb()
     .prepare(
       `SELECT o.*, u.name AS owner_name, u.role AS owner_role, u.id AS owner_id
        FROM opportunities o JOIN users u ON u.id = o.owner_id

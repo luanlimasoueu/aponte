@@ -13,7 +13,7 @@ export default async function NotificacoesPage({ searchParams }: { searchParams:
   const sp = await searchParams;
   const user = await getSessionUser();
   if (!user) redirect("/login");
-  const rows = getDb()
+  const rows = await getDb()
     .prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 100")
     .all(user.id) as unknown as { id: number; body: string; link: string; read_at: string | null; created_at: string }[];
   const unread = rows.filter((r) => !r.read_at).length;

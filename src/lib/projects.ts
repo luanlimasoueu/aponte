@@ -9,8 +9,8 @@ export type ProjectView = {
   participants: { id: number; name: string; status: string }[];
 };
 
-function activeGrants(projectId: number) {
-  return getDb()
+async function activeGrants(projectId: number) {
+  return await getDb()
     .prepare(
       `SELECT u.id, u.name, a.granted_at FROM project_access a JOIN users u ON u.id = a.mentor_id
        WHERE a.project_id = ? AND a.revoked_at IS NULL AND u.role = 'mentor' ORDER BY u.name`
@@ -18,8 +18,8 @@ function activeGrants(projectId: number) {
     .all(projectId) as { id: number; name: string; granted_at: string }[];
 }
 
-function participants(projectId: number) {
-  return getDb()
+async function participants(projectId: number) {
+  return await getDb()
     .prepare(
       `SELECT u.id, u.name, pa.status FROM project_applications pa JOIN users u ON u.id = pa.user_id
        WHERE pa.project_id = ? AND pa.status = 'accepted' ORDER BY u.name`
@@ -28,25 +28,25 @@ function participants(projectId: number) {
 }
 
 /** Returns the project only if the viewer is allowed to see it (server-side privacy check). */
-export function getProjectForViewer(id: number, viewer: User | null): ProjectView | null {
-  const project = getDb().prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
+export async function getProjectForViewer(id: number, viewer: User | null): Promise<ProjectView | null> {
+  const project = await getDb().prepare("SELECT * FROM projects WHERE id = ?").get(id) as Project | undefined;
   if (!project) return null;
-  const grantedMentors = activeGrants(id);
-  const parts = participants(id);
+  const grantedMentors = await activeGrants(id);
+  const parts = await participants(id);
   const allowed = canViewProject(
     viewer ? { id: viewer.id, role: viewer.role } : null,
     { ownerId: project.owner_id, kind: project.kind, visibility: project.visibility, status: project.status },
     { grantedMentorIds: grantedMentors.map((m) => m.id), participantIds: parts.map((p) => p.id) }
   );
   if (!allowed) return null;
-  const owner = getDb().prepare("SELECT id, name, role FROM users WHERE id = ?").get(project.owner_id) as ProjectView["owner"];
+  const owner = await getDb().prepare("SELECT id, name, role FROM users WHERE id = ?").get(project.owner_id) as ProjectView["owner"];
   return { project, owner, isOwner: viewer?.id === project.owner_id, grantedMentors, participants: parts };
 }
 
 export type ProjectFilters = { kind?: string; tool?: string; difficulty?: string; modality?: string; q?: string };
 
-export function listPublicProjects(f: ProjectFilters = {}): (Project & { owner_name: string; owner_role: string })[] {
-  const rows = getDb()
+export async function listPublicProjects(f: ProjectFilters = {}): Promise<(Project & { owner_name: string; owner_role: string })[]> {
+  const rows = await getDb()
     .prepare(
       `SELECT p.*, u.name AS owner_name, u.role AS owner_role FROM projects p JOIN users u ON u.id = p.owner_id
        WHERE p.kind != 'particular' AND p.visibility = 'public' AND p.status NOT IN ('rascunho','arquivado')
@@ -65,12 +65,12 @@ export function listPublicProjects(f: ProjectFilters = {}): (Project & { owner_n
   );
 }
 
-export function listOwnProjects(userId: number): Project[] {
-  return getDb().prepare("SELECT * FROM projects WHERE owner_id = ? ORDER BY updated_at DESC").all(userId) as unknown as Project[];
+export async function listOwnProjects(userId: number): Promise<Project[]> {
+  return await getDb().prepare("SELECT * FROM projects WHERE owner_id = ? ORDER BY updated_at DESC").all(userId) as unknown as Project[];
 }
 
-export function listSharedWithMentor(mentorId: number): (Project & { owner_name: string })[] {
-  return getDb()
+export async function listSharedWithMentor(mentorId: number): Promise<(Project & { owner_name: string })[]> {
+  return await getDb()
     .prepare(
       `SELECT p.*, u.name AS owner_name FROM project_access a
        JOIN projects p ON p.id = a.project_id JOIN users u ON u.id = p.owner_id
@@ -80,8 +80,8 @@ export function listSharedWithMentor(mentorId: number): (Project & { owner_name:
     .all(mentorId) as unknown as (Project & { owner_name: string })[];
 }
 
-export function listParticipating(userId: number): (Project & { owner_name: string; application_status: string })[] {
-  return getDb()
+export async function listParticipating(userId: number): Promise<(Project & { owner_name: string; application_status: string })[]> {
+  return await getDb()
     .prepare(
       `SELECT p.*, u.name AS owner_name, pa.status AS application_status FROM project_applications pa
        JOIN projects p ON p.id = pa.project_id JOIN users u ON u.id = p.owner_id

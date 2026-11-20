@@ -29,12 +29,12 @@ export async function GET(req: NextRequest) {
   }
 
   const db = getDb();
-  let user = db.prepare("SELECT * FROM users WHERE email = ?").get(email) as
+  let user = await db.prepare("SELECT * FROM users WHERE email = ?").get(email) as
     | User
     | undefined;
 
   if (!user) {
-    const invite = db.prepare("SELECT * FROM invites WHERE email = ?").get(email) as
+    const invite = await db.prepare("SELECT * FROM invites WHERE email = ?").get(email) as
       | Invite
       | undefined;
     if (!invite) {
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     if (!consents.acceptedAt) {
       return fail("Leia e aceite as condicoes de participacao antes de criar a conta.");
     }
-    const res = db
+    const res = await db
       .prepare(
         `INSERT INTO users (
           email, password_hash, name, role, image_consent,
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         email, "oauth", info.name?.trim() || email.split("@")[0], invite.role,
         consents.image ? 1 : 0, consents.acceptedAt, consents.acceptedAt
       );
-    user = db
+    user = await db
       .prepare("SELECT * FROM users WHERE id = ?")
       .get(Number(res.lastInsertRowid)) as unknown as User;
   }

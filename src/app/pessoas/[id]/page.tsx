@@ -27,7 +27,7 @@ export default async function PessoaPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const profile = getUser(Number(id));
+  const profile = await getUser(Number(id));
   if (!profile) notFound();
   const viewer = await getSessionUser();
   if (!profile.public_profile_consent && viewer?.id !== profile.id) notFound();
@@ -36,16 +36,16 @@ export default async function PessoaPage({
 
   const isMentorSide = profile.role === "mentor" || profile.role === "company";
 
-  const contributions = db
+  const contributions = await db
     .prepare(
       `SELECT c.*,
          (SELECT GROUP_CONCAT(u.name, ' & ') FROM endorsements e JOIN users u ON u.id = e.mentor_id WHERE e.contribution_id = c.id) AS endorsers,
-         EXISTS(SELECT 1 FROM endorsements e WHERE e.contribution_id = c.id AND e.mentor_id = ?) AS endorsedByMe
+         EXISTS(SELECT 1 FROM endorsements e WHERE e.contribution_id = c.id AND e.mentor_id = ?) AS "endorsedByMe"
        FROM contributions c WHERE c.user_id = ? ORDER BY c.created_at DESC`
     )
     .all(viewer?.id ?? 0, profile.id) as unknown as ContributionRow[];
 
-  const network = db
+  const network = await db
     .prepare(
       `SELECT u.id, u.name, u.headline FROM mentorships m
        JOIN users u ON u.id = m.mentee_id
@@ -53,7 +53,7 @@ export default async function PessoaPage({
     )
     .all(profile.id) as unknown as { id: number; name: string; headline: string }[];
 
-  const opportunities = db
+  const opportunities = await db
     .prepare("SELECT * FROM opportunities WHERE owner_id = ? ORDER BY created_at DESC")
     .all(profile.id) as unknown as {
     id: number;
@@ -66,12 +66,12 @@ export default async function PessoaPage({
   let canEndorse = false;
   if (viewer) {
     if (viewer.role === "mentee" && isMentorSide) {
-      myLink = db
+      myLink = await db
         .prepare("SELECT status FROM mentorships WHERE mentor_id = ? AND mentee_id = ?")
         .get(profile.id, viewer.id) as { status: string } | undefined;
     }
     if ((viewer.role === "mentor" || viewer.role === "company") && profile.role === "mentee") {
-      canEndorse = !!db
+      canEndorse = !!await db
         .prepare(
           "SELECT 1 FROM mentorships WHERE mentor_id = ? AND mentee_id = ? AND status = 'active'"
         )

@@ -12,8 +12,8 @@ function hashToken(token: string): string {
 export async function createSession(userId: number) {
   const token = crypto.randomBytes(32).toString("hex");
   const db = getDb();
-  db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now());
-  db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?,?)")
+  await db.prepare("DELETE FROM sessions WHERE expires_at < ?").run(Date.now());
+  await db.prepare("INSERT INTO sessions (token, user_id, expires_at) VALUES (?,?,?)")
     .run(hashToken(token), userId, Date.now() + TTL_MS);
   const store = await cookies();
   store.set(COOKIE, token, {
@@ -29,7 +29,7 @@ export async function getSessionUser(): Promise<User | null> {
   const store = await cookies();
   const token = store.get(COOKIE)?.value;
   if (!token) return null;
-  const row = getDb()
+  const row = await getDb()
     .prepare(
       `SELECT u.* FROM sessions s
        JOIN users u ON u.id = s.user_id
@@ -43,7 +43,7 @@ export async function destroySession() {
   const store = await cookies();
   const token = store.get(COOKIE)?.value;
   if (token)
-    getDb().prepare("DELETE FROM sessions WHERE token = ?").run(hashToken(token));
+    await getDb().prepare("DELETE FROM sessions WHERE token = ?").run(hashToken(token));
   store.delete(COOKIE);
 }
 

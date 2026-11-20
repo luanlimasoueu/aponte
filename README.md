@@ -102,7 +102,9 @@ pessoa pode desativar a visibilidade no editor do proprio perfil.
 ## Stack
 
 - Next.js (App Router) + React + Tailwind CSS
-- SQLite via `node:sqlite` embutido no Node 24+ (zero dependencias nativas)
+- Banco de dados (`src/lib/sql.ts`): **PostgreSQL** quando `DATABASE_URL` esta definida
+  (producao/Vercel com Neon) e **SQLite** via `node:sqlite` (Node 24+) quando nao esta (local, sem
+  instalar nada). As consultas sao as mesmas nos dois bancos.
 - Autenticacao propria: senha com scrypt + sessao por cookie httpOnly
 
 ## Rodando local
@@ -113,8 +115,15 @@ npm run dev
 # http://localhost:3000
 ```
 
-O banco `data/ponte.db` e criado e populado com dados de demo na primeira
-execucao. Para comecar do zero, apague a pasta `data/`. Para desativar o
+Sem `DATABASE_URL`, o banco SQLite `data/ponte.db` e criado e populado com dados de demo na
+primeira execucao. Para usar PostgreSQL localmente:
+
+```bash
+docker run -d --name ponte-pg -e POSTGRES_PASSWORD=ponte -e POSTGRES_DB=ponte -p 5432:5432 postgres:16
+DATABASE_URL=postgres://postgres:ponte@localhost:5432/ponte npm run dev
+```
+
+As tabelas, as colunas novas e os dados de demo sao criados automaticamente no primeiro acesso. Para comecar do zero, apague a pasta `data/`. Para desativar o
 seed de demo (ex.: deploy real), use `SEED_DEMO=0`.
 
 Para rodar em modo producao (`output: "standalone"`, mesmo do Dockerfile):
@@ -194,26 +203,21 @@ para Preview e Production.
 6. A pessoa ja pode informar disponibilidade, solicitar eventos e participar de
    mentorias.
 
-### Publicar na Vercel com seguranca
+### Publicar na Vercel (com PostgreSQL/Neon)
 
-> **Antes de publicar para amigos:** o banco SQLite atual e adequado para o
-> ambiente local, mas deve ser migrado para PostgreSQL gerenciado antes de usar
-> a Vercel em producao. Arquivos locais nao sao uma base persistente confiavel
-> para uma aplicacao serverless.
+Na Vercel o banco precisa ser PostgreSQL: o disco das funcoes serverless e temporario. Sem
+`DATABASE_URL`, o app usa SQLite em `/tmp` apenas como demonstracao (os dados se perdem).
 
-1. Crie um PostgreSQL gerenciado — Neon e a opcao recomendada pela integracao
-   da Vercel.
-2. Migre o codigo do banco de SQLite para PostgreSQL e configure `DATABASE_URL`.
-3. Importe o repositorio na Vercel.
-4. Em **Settings → Environment Variables**, cadastre `DATABASE_URL`,
-   `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_ID`,
-   `GOOGLE_CLIENT_SECRET` e `BASE_URL`.
-5. Configure `BASE_URL` com o dominio final, por exemplo
-   `https://ponte.vercel.app`.
-6. No Google Cloud, adicione
-   `https://ponte.vercel.app/auth/google/callback` como URI de redirecionamento.
-7. Faça primeiro um deploy Preview, execute o roteiro de testes deste README e
-   so depois publique em Production.
+1. Em **vercel.com → Add New → Project**, importe o repositorio.
+2. Antes do primeiro deploy (ou depois, em **Storage**), clique em **Create Database → Neon**
+   e conecte ao projeto. A Vercel cria a variavel `DATABASE_URL` automaticamente.
+3. Em **Settings → Environment Variables**, cadastre `ADMIN_EMAIL` e `ADMIN_PASSWORD`
+   (para aprovar cadastros em `/admin`). Opcional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   e `BASE_URL`. Para nao criar as contas de demo em producao, use `SEED_DEMO=0`.
+4. Faca o deploy (ou **Redeploy** apos criar o banco). As tabelas e os dados de demo sao
+   criados no primeiro acesso.
+5. Para login com Google, adicione `https://SEU-DOMINIO/auth/google/callback` como URI de
+   redirecionamento no Google Cloud.
 
 As acoes de cadastro, eventos, presenca e certificados validam usuario, papel
 e propriedade no servidor. Senhas sao protegidas com `scrypt`, sessoes usam
@@ -355,7 +359,8 @@ inexistente.
 ```bash
 npm run lint
 npm run typecheck
-npm test        # testes de compatibilidade, privacidade, projetos, eventos, perfis e senha
+npm test        # testes de compatibilidade, privacidade, projetos, eventos, perfis e senha (SQLite)
+DATABASE_URL=postgres://postgres:ponte@localhost:5432/ponte npm run test:pg   # mesmos testes de banco no PostgreSQL (apaga o schema public)
 npm run build
 ```
 

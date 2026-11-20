@@ -21,7 +21,7 @@ function optionalUrl(formData: FormData, key: string, label: string, ret: string
 export async function saveDetailedProfile(formData: FormData) {
   const user = await requireUser();
   const ret = "/perfil";
-  const current = getProfile(user.id);
+  const current = await getProfile(user.id);
   const common: Profile = {
     city: str(formData, "city", 80),
     state: one(formData, "state", UFS),
@@ -77,12 +77,12 @@ export async function saveDetailedProfile(formData: FormData) {
     }
     if (!days.length || !periods.length) back(ret, "error", "Informe pelo menos um dia e um periodo de disponibilidade.");
   }
-  saveProfile(user.id, data);
+  await saveProfile(user.id, data);
   const skills = user.role === "company" ? user.skills : csv([...(data.tools ?? []), ...(data.toolsOther ? [data.toolsOther] : [])]);
-  getDb()
+  await getDb()
     .prepare("UPDATE users SET headline = ?, bio = ?, skills = ? WHERE id = ?")
     .run(str(formData, "headline", 160), str(formData, "bio", 2000), skills, user.id);
-  audit(user.id, "profile.updated", "user", user.id);
+  await audit(user.id, "profile.updated", "user", user.id);
   back(ret, "msg", "Perfil salvo. Ele ja e usado no calculo de compatibilidade.");
 }
 
@@ -112,7 +112,7 @@ export async function createProject(formData: FormData) {
   if (kind === "open_source" && !repo) back(ret, "error", "Projetos open source precisam do link do repositorio.");
   const visibility = kind === "particular" ? "private" : formData.get("visibility") === "invite" ? "invite" : "public";
   const status = formData.get("draft") === "on" ? "rascunho" : kind === "particular" ? "andamento" : "aberto";
-  const result = getDb()
+  const result = await getDb()
     .prepare(
       `INSERT INTO projects (owner_id, kind, title, summary, description, goals, tools, areas, difficulty, opportunity_type,
          modality, weekly_hours, starts_on, ends_on, slots, repo_url, help_needed, status, visibility)
@@ -126,24 +126,24 @@ export async function createProject(formData: FormData) {
       slots, repo, str(formData, "help_needed", 500), status, visibility
     );
   const id = Number(result.lastInsertRowid);
-  audit(user.id, "project.created", "project", id);
+  await audit(user.id, "project.created", "project", id);
   back(`/projetos/${id}`, "msg", kind === "particular" ? "Projeto particular criado. Somente voce e os mentores que autorizar podem ve-lo." : "Projeto criado.");
 }
 
-function ownProject(id: number, userId: number): Project | null {
-  return (getDb().prepare("SELECT * FROM projects WHERE id = ? AND owner_id = ?").get(id, userId) as Project | undefined) ?? null;
+async function ownProject(id: number, userId: number): Promise<Project | null> {
+  return (await getDb().prepare("SELECT * FROM projects WHERE id = ? AND owner_id = ?").get(id, userId) as Project | undefined) ?? null;
 }
 
 export async function updateProjectStatus(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id"));
   const ret = `/projetos/${id}`;
-  const project = ownProject(id, user.id);
+  const project = await ownProject(id, user.id);
   if (!project) back("/projetos", "error", "Projeto nao encontrado.");
   const status = one(formData, "status", Object.keys(PROJECT_STATUS));
   if (!status) back(ret, "error", "Status invalido.");
-  getDb().prepare("UPDATE projects SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
-  audit(user.id, "project.status", "project", id);
+  await getDb().prepare("UPDATE projects SET status = ?, updated_at = datetime('now') WHERE id = ?").run(status, id);
+  await audit(user.id, "project.status", "project", id);
   back(ret, "msg", `Status atualizado para "${PROJECT_STATUS[status as keyof typeof PROJECT_STATUS]}".`);
 }
 
@@ -152,23 +152,23 @@ export async function grantProjectAccess(formData: FormData) {
   const id = Number(formData.get("project_id"));
   const mentorId = Number(formData.get("mentor_id"));
   const ret = `/projetos/${id}`;
-  const project = ownProject(id, user.id);
+  const project = await ownProject(id, user.id);
   if (!project || project.kind !== "particular") back("/projetos", "error", "Projeto particular nao encontrado.");
-  const linked = getDb()
+  const linked = await getDb()
     .prepare(
       `SELECT u.id, u.name FROM mentorships m JOIN users u ON u.id = m.mentor_id
        WHERE m.mentor_id = ? AND m.mentee_id = ? AND m.status = 'active' AND u.role = 'mentor'`
     )
     .get(mentorId, user.id) as { id: number; name: string } | undefined;
   if (!linked) back(ret, "error", "So e possivel autorizar mentores com mentoria ativa com voce.");
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO project_access (project_id, mentor_id) VALUES (?,?)
        ON CONFLICT(project_id, mentor_id) DO UPDATE SET revoked_at = NULL, granted_at = datetime('now')`
     )
     .run(id, mentorId);
-  audit(user.id, "project.access_granted", "project", id);
-  notify(mentorId, `${user.name} compartilhou o projeto particular "${project!.title}" com voce.`, ret);
+  await audit(user.id, "project.access_granted", "project", id);
+  await notify(mentorId, `${user.name} compartilhou o projeto particular "${project!.title}" com voce.`, ret);
   back(ret, "msg", `${linked!.name} agora pode ver e comentar este projeto.`);
 }
 
@@ -177,11 +177,11 @@ export async function revokeProjectAccess(formData: FormData) {
   const id = Number(formData.get("project_id"));
   const mentorId = Number(formData.get("mentor_id"));
   const ret = `/projetos/${id}`;
-  if (!ownProject(id, user.id)) back("/projetos", "error", "Projeto nao encontrado.");
-  getDb()
+  if (!await ownProject(id, user.id)) back("/projetos", "error", "Projeto nao encontrado.");
+  await getDb()
     .prepare("UPDATE project_access SET revoked_at = datetime('now') WHERE project_id = ? AND mentor_id = ? AND revoked_at IS NULL")
     .run(id, mentorId);
-  audit(user.id, "project.access_revoked", "project", id);
+  await audit(user.id, "project.access_revoked", "project", id);
   back(ret, "msg", "Acesso removido. O mentor nao consegue mais ver este projeto.");
 }
 
@@ -189,7 +189,7 @@ export async function applyToProject(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id"));
   const ret = `/projetos/${id}`;
-  const view = getProjectForViewer(id, user);
+  const view = await getProjectForViewer(id, user);
   if (!view) back("/projetos", "error", "Projeto nao encontrado.");
   const p = view!.project;
   if (view!.isOwner) back(ret, "error", "Voce e o responsavel por este projeto.");
@@ -197,22 +197,22 @@ export async function applyToProject(formData: FormData) {
   if (user.role === "company") back(ret, "error", "Empresas podem publicar projetos proprios, mas nao se inscrever.");
   if (p.slots !== null && view!.participants.length >= p.slots) back(ret, "error", "Todas as vagas deste projeto ja foram preenchidas.");
   const message = str(formData, "message", 1000);
-  const existing = getDb().prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(id, user.id) as { status: string } | undefined;
+  const existing = await getDb().prepare("SELECT status FROM project_applications WHERE project_id = ? AND user_id = ?").get(id, user.id) as { status: string } | undefined;
   if (existing && existing.status !== "cancelled") back(ret, "error", "Voce ja possui uma inscricao neste projeto.");
-  getDb()
+  await getDb()
     .prepare(
       `INSERT INTO project_applications (project_id, user_id, message, status) VALUES (?,?,?,'pending')
        ON CONFLICT(project_id, user_id) DO UPDATE SET status = 'pending', message = excluded.message, created_at = datetime('now')`
     )
     .run(id, user.id, message);
-  notify(p.owner_id, `${user.name} se candidatou ao projeto "${p.title}".`, ret);
+  await notify(p.owner_id, `${user.name} se candidatou ao projeto "${p.title}".`, ret);
   back(ret, "msg", "Candidatura enviada. Voce sera avisado(a) quando o responsavel responder.");
 }
 
 export async function cancelApplication(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id"));
-  getDb()
+  await getDb()
     .prepare("UPDATE project_applications SET status = 'cancelled' WHERE project_id = ? AND user_id = ? AND status IN ('pending','accepted')")
     .run(id, user.id);
   back(`/projetos/${id}`, "msg", "Inscricao cancelada.");
@@ -222,7 +222,7 @@ export async function reviewApplication(formData: FormData) {
   const user = await requireUser();
   const appId = Number(formData.get("application_id"));
   const decision = str(formData, "decision");
-  const row = getDb()
+  const row = await getDb()
     .prepare(
       `SELECT pa.id, pa.user_id, p.id AS project_id, p.title, p.slots FROM project_applications pa
        JOIN projects p ON p.id = pa.project_id WHERE pa.id = ? AND p.owner_id = ? AND pa.status = 'pending'`
@@ -231,17 +231,17 @@ export async function reviewApplication(formData: FormData) {
   if (!row) back("/projetos", "error", "Candidatura nao encontrada.");
   const ret = `/projetos/${row!.project_id}`;
   if (decision === "accept") {
-    const { n } = getDb().prepare("SELECT COUNT(*) AS n FROM project_applications WHERE project_id = ? AND status = 'accepted'").get(row!.project_id) as { n: number };
+    const { n } = await getDb().prepare("SELECT COUNT(*) AS n FROM project_applications WHERE project_id = ? AND status = 'accepted'").get(row!.project_id) as { n: number };
     if (row!.slots !== null && n >= row!.slots) back(ret, "error", "Todas as vagas ja foram preenchidas.");
   }
   const status = decision === "accept" ? "accepted" : "rejected";
-  getDb().prepare("UPDATE project_applications SET status = ? WHERE id = ?").run(status, appId);
-  notify(
+  await getDb().prepare("UPDATE project_applications SET status = ? WHERE id = ?").run(status, appId);
+  await notify(
     row!.user_id,
     status === "accepted" ? `Sua candidatura ao projeto "${row!.title}" foi aceita!` : `Sua candidatura ao projeto "${row!.title}" nao foi aceita desta vez.`,
     ret
   );
-  audit(user.id, `project.application_${status}`, "project", row!.project_id);
+  await audit(user.id, `project.application_${status}`, "project", row!.project_id);
   back(ret, "msg", status === "accepted" ? "Participante aceito." : "Candidatura recusada.");
 }
 
@@ -249,22 +249,22 @@ export async function addProjectFeedback(formData: FormData) {
   const user = await requireUser();
   const id = Number(formData.get("project_id"));
   const ret = `/projetos/${id}`;
-  const view = getProjectForViewer(id, user);
+  const view = await getProjectForViewer(id, user);
   if (!view) back("/projetos", "error", "Projeto nao encontrado.");
   const allowed =
     view!.isOwner || view!.grantedMentors.some((m) => m.id === user.id) || view!.participants.some((p) => p.id === user.id);
   if (!allowed) back(ret, "error", "Apenas o responsavel, mentores autorizados e participantes podem comentar.");
   const body = str(formData, "body", 2000);
   if (body.length < 2) back(ret, "error", "Escreva o comentario antes de enviar.");
-  getDb().prepare("INSERT INTO project_feedback (project_id, author_id, body) VALUES (?,?,?)").run(id, user.id, body);
-  if (!view!.isOwner) notify(view!.project.owner_id, `${user.name} comentou no projeto "${view!.project.title}".`, ret);
+  await getDb().prepare("INSERT INTO project_feedback (project_id, author_id, body) VALUES (?,?,?)").run(id, user.id, body);
+  if (!view!.isOwner) await notify(view!.project.owner_id, `${user.name} comentou no projeto "${view!.project.title}".`, ret);
   back(ret, "msg", "Comentario publicado.");
 }
 
 // ---------------- Aprendizado ----------------
 
-function ownGoal(goalId: number, menteeId: number) {
-  return getDb().prepare("SELECT * FROM learning_goals WHERE id = ? AND mentee_id = ?").get(goalId, menteeId) as
+async function ownGoal(goalId: number, menteeId: number) {
+  return await getDb().prepare("SELECT * FROM learning_goals WHERE id = ? AND mentee_id = ?").get(goalId, menteeId) as
     | { id: number; title: string }
     | undefined;
 }
@@ -277,7 +277,7 @@ export async function createGoal(formData: FormData) {
   if (title.length < 3) back(ret, "error", "Informe a meta em pelo menos 3 caracteres.");
   const projectId = Number(formData.get("project_id")) || null;
   if (projectId) {
-    const ok = getDb()
+    const ok = await getDb()
       .prepare(
         `SELECT 1 FROM projects WHERE id = ? AND (owner_id = ? OR id IN
            (SELECT project_id FROM project_applications WHERE user_id = ? AND status = 'accepted'))`
@@ -285,55 +285,55 @@ export async function createGoal(formData: FormData) {
       .get(projectId, user.id, user.id);
     if (!ok) back(ret, "error", "Projeto invalido para esta meta.");
   }
-  const goalId = Number(
-    getDb()
+  const goalId = (
+    await getDb()
       .prepare("INSERT INTO learning_goals (mentee_id, project_id, title, description, due_on) VALUES (?,?,?,?,?)")
-      .run(user.id, projectId, title, str(formData, "description", 1000), str(formData, "due_on", 10)).lastInsertRowid
-  );
+      .run(user.id, projectId, title, str(formData, "description", 1000), str(formData, "due_on", 10))
+  ).lastInsertRowid;
   const steps = str(formData, "steps", 3000).split("\n").map((s) => s.trim()).filter(Boolean).slice(0, 20);
   const insert = getDb().prepare("INSERT INTO goal_steps (goal_id, title) VALUES (?,?)");
-  for (const s of steps) insert.run(goalId, s.slice(0, 200));
-  const mentors = getDb()
+  for (const s of steps) await insert.run(goalId, s.slice(0, 200));
+  const mentors = await getDb()
     .prepare("SELECT mentor_id FROM mentorships WHERE mentee_id = ? AND status = 'active'")
     .all(user.id) as { mentor_id: number }[];
-  for (const m of mentors) notify(m.mentor_id, `${user.name} criou a meta "${title}".`, "/aprendizado");
+  for (const m of mentors) await notify(m.mentor_id, `${user.name} criou a meta "${title}".`, "/aprendizado");
   back(ret, "msg", "Meta criada.");
 }
 
 export async function toggleGoalStep(formData: FormData) {
   const user = await requireUser();
   const stepId = Number(formData.get("step_id"));
-  const row = getDb()
+  const row = await getDb()
     .prepare("SELECT s.id, s.done FROM goal_steps s JOIN learning_goals g ON g.id = s.goal_id WHERE s.id = ? AND g.mentee_id = ?")
     .get(stepId, user.id) as { id: number; done: number } | undefined;
   if (!row) back("/aprendizado", "error", "Etapa nao encontrada.");
-  getDb().prepare("UPDATE goal_steps SET done = ? WHERE id = ?").run(row!.done ? 0 : 1, stepId);
+  await getDb().prepare("UPDATE goal_steps SET done = ? WHERE id = ?").run(row!.done ? 0 : 1, stepId);
   back("/aprendizado", "msg", row!.done ? "Etapa reaberta." : "Etapa concluida.");
 }
 
 export async function addGoalStep(formData: FormData) {
   const user = await requireUser();
   const goalId = Number(formData.get("goal_id"));
-  if (!ownGoal(goalId, user.id)) back("/aprendizado", "error", "Meta nao encontrada.");
+  if (!await ownGoal(goalId, user.id)) back("/aprendizado", "error", "Meta nao encontrada.");
   const title = str(formData, "title", 200);
   if (!title) back("/aprendizado", "error", "Informe a etapa.");
-  getDb().prepare("INSERT INTO goal_steps (goal_id, title) VALUES (?,?)").run(goalId, title);
+  await getDb().prepare("INSERT INTO goal_steps (goal_id, title) VALUES (?,?)").run(goalId, title);
   back("/aprendizado", "msg", "Etapa adicionada.");
 }
 
 export async function setGoalStatus(formData: FormData) {
   const user = await requireUser();
   const goalId = Number(formData.get("goal_id"));
-  if (!ownGoal(goalId, user.id)) back("/aprendizado", "error", "Meta nao encontrada.");
+  if (!await ownGoal(goalId, user.id)) back("/aprendizado", "error", "Meta nao encontrada.");
   const status = formData.get("status") === "concluida" ? "concluida" : "andamento";
-  getDb().prepare("UPDATE learning_goals SET status = ? WHERE id = ?").run(status, goalId);
+  await getDb().prepare("UPDATE learning_goals SET status = ? WHERE id = ?").run(status, goalId);
   back("/aprendizado", "msg", status === "concluida" ? "Meta concluida. Parabens!" : "Meta reaberta.");
 }
 
 export async function addGoalFeedback(formData: FormData) {
   const user = await requireUser();
   const goalId = Number(formData.get("goal_id"));
-  const goal = getDb()
+  const goal = await getDb()
     .prepare(
       `SELECT g.id, g.title, g.mentee_id FROM learning_goals g
        WHERE g.id = ? AND (g.mentee_id = ? OR g.mentee_id IN
@@ -343,8 +343,8 @@ export async function addGoalFeedback(formData: FormData) {
   if (!goal) back("/aprendizado", "error", "Voce so pode comentar metas dos seus mentorados.");
   const body = str(formData, "body", 2000);
   if (body.length < 2) back("/aprendizado", "error", "Escreva o feedback antes de enviar.");
-  getDb().prepare("INSERT INTO goal_feedback (goal_id, author_id, body) VALUES (?,?,?)").run(goalId, user.id, body);
-  if (goal!.mentee_id !== user.id) notify(goal!.mentee_id, `${user.name} deixou um feedback na meta "${goal!.title}".`, "/aprendizado");
+  await getDb().prepare("INSERT INTO goal_feedback (goal_id, author_id, body) VALUES (?,?,?)").run(goalId, user.id, body);
+  if (goal!.mentee_id !== user.id) await notify(goal!.mentee_id, `${user.name} deixou um feedback na meta "${goal!.title}".`, "/aprendizado");
   back("/aprendizado", "msg", "Feedback registrado.");
 }
 
@@ -352,6 +352,6 @@ export async function addGoalFeedback(formData: FormData) {
 
 export async function markNotificationsRead(formData: FormData) {
   const user = await requireUser();
-  getDb().prepare("UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL").run(user.id);
+  await getDb().prepare("UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL").run(user.id);
   back(safeReturn(str(formData, "return"), "/notificacoes"), "msg", "Notificacoes marcadas como lidas.");
 }

@@ -27,14 +27,14 @@ export default async function AdminPage({
   if (!(await isAdmin())) redirect("/admin/login");
   const sp = await searchParams;
 
-  const invites = getDb()
+  const invites = await getDb()
     .prepare(
       `SELECT i.email, i.role, i.created_at, u.name AS user_name
        FROM invites i LEFT JOIN users u ON u.email = i.email
        ORDER BY i.created_at DESC`
     )
     .all() as unknown as InviteRow[];
-  const pendingUsers = getDb()
+  const pendingUsers = await getDb()
     .prepare("SELECT id, name, email, role, created_at FROM users WHERE account_status = 'pending' ORDER BY created_at ASC")
     .all() as unknown as PendingUserRow[];
 

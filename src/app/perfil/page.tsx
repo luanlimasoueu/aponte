@@ -18,7 +18,7 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
   const user = await getSessionUser();
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/primeiro-acesso");
-  const p = getProfile(user.id);
+  const p = await getProfile(user.id);
   const completeness = Math.round(profileCompleteness(p, user.role) * 100);
   const isCompany = user.role === "company";
   const isMentor = user.role === "mentor";

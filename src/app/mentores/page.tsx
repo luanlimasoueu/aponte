@@ -18,7 +18,7 @@ export default async function MentoresPage({ searchParams }: { searchParams: Pro
   const user = await getSessionUser();
   const db = getDb();
   const submitted = val(sp, "f") === "1";
-  const own = user?.role === "mentee" && !submitted ? getProfile(user.id) : null;
+  const own = user?.role === "mentee" && !submitted ? await getProfile(user.id) : null;
 
   const query: MentorQuery = own
     ? {
@@ -39,33 +39,33 @@ export default async function MentoresPage({ searchParams }: { searchParams: Pro
   const q = val(sp, "q");
   const like = `%${q}%`;
 
-  const mentors = db
+  const mentors = await db
     .prepare(
       `SELECT u.*,
          (SELECT COUNT(*) FROM mentorships m WHERE m.mentor_id = u.id AND m.status = 'active') AS mentees
        FROM users u
        WHERE u.role IN ('mentor','company') AND u.account_status = 'active'
          AND u.public_profile_consent = 1
-         AND (u.name LIKE ? OR u.skills LIKE ? OR u.headline LIKE ? OR u.bio LIKE ?)`
+         AND (LOWER(u.name) LIKE LOWER(?) OR LOWER(u.skills) LIKE LOWER(?) OR LOWER(u.headline) LIKE LOWER(?) OR LOWER(u.bio) LIKE LOWER(?))`
     )
     .all(like, like, like, like) as unknown as MentorRow[];
 
-  const scored = mentors
-    .map((m) => {
-      const p = getProfile(m.id);
+  const scored = (await Promise.all(mentors
+    .map(async (m) => {
+      const p = await getProfile(m.id);
       const match = matchMentor(query, {
         tools: p.tools ?? [], areas: p.areas ?? [], help: p.help ?? [], days: p.days ?? [], periods: p.periods ?? [],
         level: p.level ?? "", modality: p.modality ?? "",
       });
       return match ? { ...m, profile: p, match, completeness: profileCompleteness(p, m.role) } : null;
-    })
+    })))
     .filter(<T,>(x: T | null): x is T => x !== null);
   const results = rank(scored);
   const hasCriteria = results[0]?.match.criteria.some((c) => c.score !== null) ?? false;
 
   const myStatus = new Map<number, string>();
   if (user?.role === "mentee") {
-    const rows = db.prepare("SELECT mentor_id, status FROM mentorships WHERE mentee_id = ?").all(user.id) as unknown as { mentor_id: number; status: string }[];
+    const rows = await db.prepare("SELECT mentor_id, status FROM mentorships WHERE mentee_id = ?").all(user.id) as unknown as { mentor_id: number; status: string }[];
     for (const r of rows) myStatus.set(r.mentor_id, r.status);
   }
   const ret = `/mentores${toQuery(sp)}`;

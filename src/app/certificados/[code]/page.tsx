@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function CertificatePage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  const certificate = getDb().prepare(
+  const certificate = await getDb().prepare(
     `SELECT c.*, u.name AS recipient_name, issuer.name AS issuer_name, e.starts_at
      FROM certificates c JOIN users u ON u.id = c.user_id JOIN users issuer ON issuer.id = c.issued_by
      LEFT JOIN events e ON e.id = c.event_id WHERE c.verification_code = ?`

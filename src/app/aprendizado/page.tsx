@@ -22,7 +22,7 @@ export default async function AprendizadoPage({ searchParams }: { searchParams: 
   const db = getDb();
   const isMentee = user.role === "mentee";
 
-  const goals = db
+  const goals = await db
     .prepare(
       `SELECT g.*, u.name AS mentee_name, p.title AS project_title FROM learning_goals g
        JOIN users u ON u.id = g.mentee_id LEFT JOIN projects p ON p.id = g.project_id
@@ -32,11 +32,11 @@ export default async function AprendizadoPage({ searchParams }: { searchParams: 
     .all(user.id) as unknown as Goal[];
   const ids = goals.map((g) => g.id);
   const marks = ids.map(() => "?").join(",") || "NULL";
-  const steps = db.prepare(`SELECT * FROM goal_steps WHERE goal_id IN (${marks}) ORDER BY id`).all(...ids) as unknown as Step[];
-  const feedback = db
+  const steps = await db.prepare(`SELECT * FROM goal_steps WHERE goal_id IN (${marks}) ORDER BY id`).all(...ids) as unknown as Step[];
+  const feedback = await db
     .prepare(`SELECT f.*, u.name FROM goal_feedback f JOIN users u ON u.id = f.author_id WHERE f.goal_id IN (${marks}) ORDER BY f.created_at`)
     .all(...ids) as unknown as Fb[];
-  const projects = isMentee ? [...listOwnProjects(user.id), ...listParticipating(user.id).filter((p) => p.application_status === "accepted")] : [];
+  const projects = isMentee ? [...(await listOwnProjects(user.id)), ...(await listParticipating(user.id)).filter((p) => p.application_status === "accepted")] : [];
 
   const totalSteps = steps.length;
   const doneSteps = steps.filter((s) => s.done).length;
