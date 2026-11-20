@@ -86,7 +86,7 @@ export default async function MentoresPage({ searchParams }: { searchParams: Pro
       )}
 
       <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
-        <form method="GET" action="/mentores" className="space-y-5 self-start rounded-lg border border-line bg-surface p-5" aria-label="Filtros de busca">
+        <form key={JSON.stringify(query)} method="GET" action="/mentores" className="space-y-5 self-start rounded-lg border border-line bg-surface p-5" aria-label="Filtros de busca">
           <input type="hidden" name="f" value="1" />
           <label className="block space-y-1.5">
             <span className="text-sm font-medium">Nome ou palavra-chave</span>

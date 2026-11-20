@@ -62,7 +62,7 @@ export default async function EventosPage({
         {user && <Link href="/dashboard" className={btnSecondaryCls}>Gerenciar no painel</Link>}
       </div>
       <Flash params={sp} />
-      <form method="GET" action="/eventos" aria-label="Filtros de eventos" className="grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-4">
+      <form key={`${fModality}-${fCategory}-${fCity}`} method="GET" action="/eventos" aria-label="Filtros de eventos" className="grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-4">
         <label className="space-y-1 text-sm"><span>Modalidade</span>
           <select name="modality" defaultValue={fModality} className={inputCls}><option value="">Todas</option>{Object.entries(modalityLabel).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         </label>

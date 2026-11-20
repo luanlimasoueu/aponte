@@ -67,7 +67,7 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
       </PageHeader>
 
       <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
-        <form method="GET" action="/talentos" className="space-y-5 self-start rounded-lg border border-line bg-surface p-5" aria-label="Filtros de busca">
+        <form key={`${projectId}-${JSON.stringify(query)}`} method="GET" action="/talentos" className="space-y-5 self-start rounded-lg border border-line bg-surface p-5" aria-label="Filtros de busca">
           {ownProjects.length > 0 && (
             <div className="space-y-1.5 text-xs">
               <p className="text-sm font-medium">Usar criterios de um projeto meu</p>

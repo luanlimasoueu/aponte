@@ -44,7 +44,7 @@ export default async function ProjetosPage({ searchParams }: { searchParams: Pro
         </div>
       )}
 
-      <form method="GET" action="/projetos" className="mb-6 grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[1fr_repeat(4,160px)_auto]" aria-label="Filtros">
+      <form key={JSON.stringify(filters)} method="GET" action="/projetos" className="mb-6 grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-[1fr_repeat(4,160px)_auto]" aria-label="Filtros">
         <label className="block space-y-1.5"><span className="text-sm font-medium">Buscar</span><input name="q" defaultValue={filters.q} className={inputCls} /></label>
         <label className="block space-y-1.5">
           <span className="text-sm font-medium">Tipo</span>
