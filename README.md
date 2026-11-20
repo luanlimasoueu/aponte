@@ -5,6 +5,12 @@ a pessoas em **inicio de carreira ou transicao** — em qualquer idade.
 
 ## Funcionalidades (MVP)
 
+- **Novo:** tres acessos (Sou Mentor / Sou Mentorado / Sou Empresa), perfis detalhados
+  (ferramentas, areas, tipos de ajuda, disponibilidade, modalidade e dados da empresa), busca
+  de mentores e mentorados por compatibilidade explicavel, projetos particulares, open source,
+  educacionais e empresariais (com candidaturas e privacidade), metas com etapas e feedback,
+  notificacoes e filtros e detalhes de eventos. Veja "Jornada educacional" no roteiro de testes.
+
 - **Cadastro com aprovacao**: mentores e mentorados solicitam acesso com nome,
   email e senha; o administrador aprova antes do primeiro login.
 - **Tres papeis**: mentor, mentorado e empresa (empresas tambem podem mentorar).
@@ -302,14 +308,58 @@ Com as variaveis `ADMIN_EMAIL` e `ADMIN_PASSWORD` configuradas, acesse
 `/admin`, aprove um cadastro de mentor ou mentorado e confirme que ele consegue
 entrar com o email e senha escolhidos no registro.
 
+### 5. Jornada educacional (HackBrasil — Acesso a Educacao)
+
+Jornada principal: **Cadastro → Busca → Mentoria → Projeto → Aprendizado**.
+
+1. Na pagina inicial, escolha **Sou Mentor**, **Sou Mentorado** ou **Sou Empresa**
+   (`/sou-mentor`, `/sou-mentorado`, `/sou-empresa`).
+2. Entre como `joao@email.com` e abra `/mentores`: os filtros ja vem preenchidos com
+   as ferramentas que ele quer aprender e a disponibilidade dele. Cada mentor mostra a
+   porcentagem de compatibilidade, os motivos, as diferencas e o calculo por criterio.
+3. Solicite mentoria informando o objetivo. O mentor recebe uma notificacao (sino no topo).
+4. Entre como `maria@email.com` e abra `/projetos/1` (projeto particular). Somente ela e
+   o mentor autorizado (Carlos) veem esse projeto. Clique em **Remover acesso**: Carlos
+   deixa de ver na hora. Empresas e outros mentorados recebem 404.
+5. Em `/aprendizado`, Maria marca etapas da meta; Carlos ve a meta e deixa feedback.
+6. Entre como `contato@techcorp.dev`, abra `/projetos/3` e clique em
+   **Buscar mentorados compativeis**: `/talentos` usa as ferramentas e areas do projeto.
+   A candidatura do Pedro pode ser aceita ou recusada no proprio projeto.
+7. `/eventos` tem filtros por modalidade, categoria e cidade, e cada evento tem uma pagina
+   de detalhes (`/eventos/[id]`). A inscricao, a aprovacao, a lista de espera, o check-in e
+   os certificados continuam iguais.
+
+**Calculo de compatibilidade** (`src/lib/matching.ts`, deterministico e sem IA):
+
+| Mentorado procurando mentor | Peso | Empresa/mentor procurando mentorado | Peso |
+| --- | --- | --- | --- |
+| Ferramentas | 30% | Ferramentas (conhece = 1, quer aprender = 0,5) | 30% |
+| Tipo de projeto | 20% | Tipo de projeto | 25% |
+| Tipo de ajuda | 20% | Nivel de experiencia | 15% |
+| Disponibilidade | 15% | Objetivos de aprendizado | 15% |
+| Experiencia do mentor | 10% | Disponibilidade | 10% |
+| Modalidade | 5% | Modalidade | 5% |
+
+Criterios que nao foram preenchidos nao entram na conta: o peso deles e redistribuido.
+Os filtros "Obrigatorio" excluem quem nao atende ao criterio. Empates sao desempatados
+por ferramentas, depois disponibilidade, depois perfil mais completo e, por fim, nome.
+
+**Privacidade de projetos** (`canViewProject` em `src/lib/matching.ts`, aplicado no servidor por
+`src/lib/projects.ts`): projetos particulares sao sempre privados, nao aparecem em buscas e
+so podem ser vistos pelo dono e pelos mentores com acesso ativo. So e possivel dar acesso a
+mentores com mentoria ativa. Quem nao tem permissao recebe a mesma resposta 404 de um projeto
+inexistente.
+
 ### Checklist tecnico
 
 ```bash
 npm run lint
-npx tsc --noEmit
+npm run typecheck
+npm test        # testes de compatibilidade, privacidade, projetos, eventos, perfis e senha
+npm run build
 ```
 
-Os dois comandos devem concluir sem erros. Em seguida, confirme que
+Todos os comandos devem concluir sem erros. Em seguida, confirme que
 `http://localhost:3000/eventos` responde e apresenta a agenda de eventos.
 
 ## Deploy (Docker — Railway, Render, Fly.io, VPS)

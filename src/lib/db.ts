@@ -647,6 +647,13 @@ function seedEducation(db: DatabaseSync) {
   const maria = idOf("maria@email.com");
   const pedro = idOf("pedro@email.com");
   if (!ana || !carlos || !rita || !techcorp || !joao || !maria || !pedro) return;
+  // Demo accounts accept public visibility so the public pages have content to show.
+  db.prepare(
+    `UPDATE users SET public_profile_consent = 1, public_profile_consent_at = datetime('now'),
+       employment_terms_accepted_at = COALESCE(employment_terms_accepted_at, datetime('now')),
+       code_of_conduct_accepted_at = COALESCE(code_of_conduct_accepted_at, datetime('now'))
+     WHERE id IN (?,?,?,?,?,?,?)`
+  ).run(ana, carlos, rita, techcorp, joao, maria, pedro);
 
   const put = (id: number, p: Profile) =>
     db.prepare("INSERT INTO profiles (user_id, data) VALUES (?,?)").run(id, JSON.stringify(p));
