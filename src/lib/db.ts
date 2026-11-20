@@ -345,8 +345,10 @@ let _db: DatabaseSync | null = null;
 
 export function getDb(): DatabaseSync {
   if (_db) return _db;
+  // Vercel functions only allow writes in /tmp: data there is temporary (demo only).
   const dbPath =
-    process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "ponte.db");
+    process.env.DATABASE_PATH ??
+    (process.env.VERCEL ? path.join("/tmp", "ponte.db") : path.join(process.cwd(), "data", "ponte.db"));
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA journal_mode = WAL;");
