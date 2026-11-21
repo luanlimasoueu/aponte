@@ -56,11 +56,6 @@ function accountNav(role: string) {
     { href: "/meus-eventos", label: "Meus eventos" }];
 }
 
-const USER_NAV = [
-  { href: "/aprendizado", label: "Aprendizado" },
-  { href: "/perfil", label: "Meu perfil" },
-];
-
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
