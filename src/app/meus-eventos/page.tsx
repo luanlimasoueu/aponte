@@ -30,7 +30,7 @@ export default async function MeusEventosPage() {
     : [];
   return (
     <div className="pb-10">
-      <PageHeader eyebrow="Minha conta" title="Meus eventos">
+      <PageHeader eyebrow="Minha conta" title={user.role === "mentee" ? "Eventos participantes" : "Meus eventos"}>
         {user.role === "mentee" ? "Eventos em que voce se inscreveu." : "Eventos que voce cadastrou e as pessoas inscritas em cada um."}
       </PageHeader>
       {user.role !== "mentee" && <Link href="/dashboard" className={`${btnSecondaryCls} mb-6`}>Cadastrar evento no painel</Link>}

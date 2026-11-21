@@ -37,11 +37,11 @@ export default async function MeusProjetosPage() {
   );
   return (
     <div className="pb-10">
-      <PageHeader eyebrow="Minha conta" title="Meus projetos" />
+      <PageHeader eyebrow="Minha conta" title={user.role === "mentor" ? "Projetos mentorados" : user.role === "mentee" ? "Projetos proprios" : "Meus projetos"} />
       <Link href="/projetos/novo" className={`${btnCls} mb-8`}>Criar projeto</Link>
+      {user.role === "mentor" && section("Projetos dos meus mentorados", shared.map((p) => ({ id: p.id, title: p.title, kind: p.kind, tag: p.owner_name })), "Nenhum mentorado compartilhou projetos com voce ainda.")}
       {section("Projetos que criei", own.map((p) => ({ id: p.id, title: p.title, kind: p.kind, tag: PROJECT_STATUS[p.status as keyof typeof PROJECT_STATUS] ?? p.status })), "Voce ainda nao criou projetos.")}
       {section("Projetos de que participo", participating.map((p) => ({ id: p.id, title: p.title, kind: p.kind, tag: p.application_status === "accepted" ? "Participante" : "Aguardando resposta" })), "Nenhuma participacao ainda.")}
-      {user.role === "mentor" && section("Compartilhados comigo", shared.map((p) => ({ id: p.id, title: p.title, kind: p.kind, tag: p.owner_name })), "Nenhum projeto particular compartilhado com voce.")}
     </div>
   );
 }

@@ -25,15 +25,36 @@ const NAV = [
   { href: "/oportunidades", label: "Oportunidades" },
 ];
 
-const ACCOUNT_NAV = [
-  { href: "/dashboard", label: "Painel" },
-  { href: "/perfil", label: "Meu perfil" },
-  { href: "/aprendizado", label: "Aprendizado" },
-  { href: "/minha-rede?aba=mentores", label: "Mentores" },
-  { href: "/minha-rede?aba=mentorados", label: "Mentorados" },
-  { href: "/meus-projetos", label: "Meus projetos" },
-  { href: "/meus-eventos", label: "Meus eventos" },
-];
+const OPEN_SOURCE = { href: "/projetos?kind=open_source", label: "Projetos open source" };
+
+function accountNav(role: string) {
+  const base = [
+    { href: "/dashboard", label: "Painel" },
+    { href: "/perfil", label: "Meu perfil" },
+  ];
+  if (role === "mentor")
+    return [...base,
+      { href: "/aprendizado", label: "Aprendizado" },
+      { href: "/minha-rede?aba=mentorados", label: "Mentorados" },
+      { href: "/empresas", label: "Empresas" },
+      { href: "/meus-projetos", label: "Projetos mentorados" },
+      OPEN_SOURCE,
+      { href: "/meus-eventos", label: "Meus eventos" }];
+  if (role === "mentee")
+    return [...base,
+      { href: "/aprendizado", label: "Aprendizado" },
+      { href: "/minha-rede?aba=mentores", label: "Mentores" },
+      { href: "/empresas", label: "Empresas" },
+      { href: "/meus-projetos", label: "Projetos proprios" },
+      OPEN_SOURCE,
+      { href: "/meus-eventos", label: "Eventos participantes" }];
+  return [...base,
+    { href: "/mentores", label: "Mentores" },
+    { href: "/talentos", label: "Mentorados" },
+    { href: "/meus-projetos", label: "Meus projetos" },
+    OPEN_SOURCE,
+    { href: "/meus-eventos", label: "Meus eventos" }];
+}
 
 const USER_NAV = [
   { href: "/aprendizado", label: "Aprendizado" },
@@ -98,7 +119,7 @@ export default async function RootLayout({
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
                     </summary>
                     <nav aria-label="Minha conta" className="absolute right-0 top-8 z-40 flex w-56 flex-col rounded-lg border border-line bg-surface p-2 text-sm shadow-2xl shadow-black/50">
-                      {ACCOUNT_NAV.map((n) => (
+                      {accountNav(user.role).map((n) => (
                         <Link key={n.href} href={n.href} className="rounded-md px-3 py-2 text-muted transition-colors hover:bg-raised hover:text-fg">
                           {n.label}
                         </Link>
@@ -146,7 +167,7 @@ export default async function RootLayout({
                   <div className="my-2 border-t border-line" />
                   {user ? (
                     <>
-                      {ACCOUNT_NAV.concat([{ href: "/notificacoes", label: `Notificacoes${unread ? ` (${unread})` : ""}` }]).map((n) => (
+                      {accountNav(user!.role).concat([{ href: "/notificacoes", label: `Notificacoes${unread ? ` (${unread})` : ""}` }]).map((n) => (
                         <Link key={n.href} href={n.href} className="rounded-md px-3 py-2.5 text-muted transition-colors hover:bg-raised hover:text-fg">
                           {n.label}
                         </Link>
