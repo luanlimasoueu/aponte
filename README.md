@@ -214,7 +214,10 @@ Na Vercel o banco precisa ser PostgreSQL: o disco das funcoes serverless e tempo
 3. Em **Settings → Environment Variables**, cadastre `ADMIN_EMAIL` e `ADMIN_PASSWORD`
    (para acessar `/admin`). Os cadastros sao liberados na hora; para exigir aprovacao manual, use `REQUIRE_APPROVAL=1`. Opcional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    e `BASE_URL`. Para nao criar as contas de demo em producao, use `SEED_DEMO=0`.
-4. Faca o deploy (ou **Redeploy** apos criar o banco). As tabelas e os dados de demo sao
+4. Para o "Esqueci minha senha" enviar e-mails, crie uma conta gratuita no Resend e cadastre
+   `RESEND_API_KEY` (e, com dominio verificado, `EMAIL_FROM`, ex.: `Ponte <nao-responda@seudominio.com>`).
+   Sem a chave, o link de redefinicao aparece apenas no log do servidor.
+5. Faca o deploy (ou **Redeploy** apos criar o banco). As tabelas e os dados de demo sao
    criados no primeiro acesso.
 5. Para login com Google, adicione `https://SEU-DOMINIO/auth/google/callback` como URI de
    redirecionamento no Google Cloud.

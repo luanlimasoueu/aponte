@@ -40,6 +40,9 @@ export default async function LoginPage({
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-muted">
+          <Link href="/esqueci-senha" className="mb-3 block text-accent hover:underline">
+            Esqueci minha senha
+          </Link>
           Ainda nao tem conta?{" "}
           <Link href="/signup" className="text-accent hover:underline">
             Criar conta

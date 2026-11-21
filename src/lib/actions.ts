@@ -95,6 +95,11 @@ export async function login(formData: FormData) {
   if (!user || !verifyPassword(password, user.password_hash)) {
     back("/login", "error", "Email ou senha incorretos.");
   }
+  if (user!.account_status === "pending" && !REQUIRE_APPROVAL) {
+    // Accounts created while approval was required are released automatically.
+    await getDb().prepare("UPDATE users SET account_status = 'active' WHERE id = ?").run(user!.id);
+    user!.account_status = "active";
+  }
   if (user!.account_status === "pending") {
     back("/login", "error", "Seu cadastro esta aguardando aprovacao do administrador.");
   }
