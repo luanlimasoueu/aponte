@@ -113,8 +113,21 @@ function postgresDriver(url: string): Driver {
   };
 }
 
+// Vercel's Neon/Postgres integrations may expose the connection string under different names.
+export function postgresUrl(): string | undefined {
+  return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL || undefined;
+}
+
+/** True on Vercel without Postgres: SQLite lives in /tmp of each instance, so data is temporary. */
+export function isTemporaryDatabase(): boolean {
+  return !!process.env.VERCEL && !postgresUrl() && !process.env.DATABASE_PATH;
+}
+
 let driver: Driver | null = null;
 export function getDriver(): Driver {
-  if (!driver) driver = process.env.DATABASE_URL ? postgresDriver(process.env.DATABASE_URL) : sqliteDriver();
+  if (!driver) {
+    const url = postgresUrl();
+    driver = url ? postgresDriver(url) : sqliteDriver();
+  }
   return driver;
 }

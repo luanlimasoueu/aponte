@@ -4,6 +4,7 @@ import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
 import { logout } from "@/lib/actions";
 import { getDb } from "@/lib/db";
+import { isTemporaryDatabase } from "@/lib/sql";
 import { Suspense } from "react";
 import { MobileMenuCloser } from "@/components/mobile-menu-closer";
 import "./globals.css";
@@ -39,6 +40,12 @@ export default async function RootLayout({
   return (
     <html lang="pt-BR" className={geist.variable}>
       <body className="min-h-screen bg-ink font-sans text-fg antialiased">
+        {isTemporaryDatabase() && (
+          <p role="status" className="bg-amber-400/15 px-5 py-2 text-center text-xs text-amber-200">
+            Modo demonstracao: o banco de dados nao esta conectado, os dados sao temporarios e o login pode cair.
+            Conecte o Neon na aba Storage da Vercel e publique de novo.
+          </p>
+        )}
         <a href="#conteudo" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-ink">
           Pular para o conteudo
         </a>
