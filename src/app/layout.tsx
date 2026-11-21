@@ -94,7 +94,7 @@ export default async function RootLayout({
                 Ponte
               </Link>
               <nav aria-label="Principal" className="hidden items-center gap-6 text-sm text-muted md:flex">
-                {NAV.map((n) => (
+                {NAV.filter((n) => !(user?.role === "mentor" && n.href === "/mentores")).map((n) => (
                   <Link key={n.href} href={n.href} className="transition-colors hover:text-fg">
                     {n.label}
                   </Link>
@@ -150,7 +150,7 @@ export default async function RootLayout({
               </summary>
               <div className="absolute right-0 top-12 w-56 rounded-lg border border-line bg-surface p-2 shadow-2xl shadow-black/50">
                 <nav className="flex flex-col text-sm">
-                  {NAV.map((n) => (
+                  {NAV.filter((n) => !(user?.role === "mentor" && n.href === "/mentores")).map((n) => (
                     <Link
                       key={n.href}
                       href={n.href}
