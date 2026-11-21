@@ -21,6 +21,8 @@ function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
 }
 
+// Set REQUIRE_APPROVAL=1 to keep new accounts pending until approved in /admin.
+const REQUIRE_APPROVAL = process.env.REQUIRE_APPROVAL === "1";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const EVENT_MODALITIES = ["online", "in_person", "hybrid"];
 
@@ -133,10 +135,13 @@ export async function registerAccount(formData: FormData) {
       email, password_hash, name, role, account_status, image_consent,
       public_profile_consent, public_profile_consent_at,
       employment_terms_accepted_at, code_of_conduct_accepted_at
-    ) VALUES (?,?,?,?, 'pending', ?, 1, datetime('now'), datetime('now'), datetime('now'))`
-  ).run(email, hashPassword(password), name, role, formData.get("image_consent") === "on" ? 1 : 0);
-  await audit(null, "account.requested", "user", Number(result.lastInsertRowid));
-  back("/login", "msg", "Cadastro enviado. Aguarde a aprovacao do administrador para entrar.");
+    ) VALUES (?,?,?,?, ?, ?, 1, datetime('now'), datetime('now'), datetime('now'))`
+  ).run(email, hashPassword(password), name, role, REQUIRE_APPROVAL ? "pending" : "active", formData.get("image_consent") === "on" ? 1 : 0);
+  const newUserId = Number(result.lastInsertRowid);
+  await audit(null, REQUIRE_APPROVAL ? "account.requested" : "account.created", "user", newUserId);
+  if (REQUIRE_APPROVAL) back("/login", "msg", "Cadastro enviado. Aguarde a aprovacao do administrador para entrar.");
+  await createSession(newUserId);
+  back("/perfil", "msg", "Conta criada! Complete seu perfil para receber recomendacoes por compatibilidade.");
 }
 
 export async function reviewAccount(formData: FormData) {

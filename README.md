@@ -212,7 +212,7 @@ Na Vercel o banco precisa ser PostgreSQL: o disco das funcoes serverless e tempo
 2. Antes do primeiro deploy (ou depois, em **Storage**), clique em **Create Database → Neon**
    e conecte ao projeto. A Vercel cria a variavel `DATABASE_URL` automaticamente.
 3. Em **Settings → Environment Variables**, cadastre `ADMIN_EMAIL` e `ADMIN_PASSWORD`
-   (para aprovar cadastros em `/admin`). Opcional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   (para acessar `/admin`). Os cadastros sao liberados na hora; para exigir aprovacao manual, use `REQUIRE_APPROVAL=1`. Opcional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
    e `BASE_URL`. Para nao criar as contas de demo em producao, use `SEED_DEMO=0`.
 4. Faca o deploy (ou **Redeploy** apos criar o banco). As tabelas e os dados de demo sao
    criados no primeiro acesso.

@@ -12,14 +12,13 @@ export default async function SignupPage({
   return (
     <div className="mx-auto max-w-md py-8">
       <Card>
-        <h1 className="text-xl font-bold">Solicitar acesso a Ponte</h1>
+        <h1 className="text-xl font-bold">Criar conta na Ponte</h1>
         <div className="mt-4">
           <Flash params={sp} />
         </div>
         <p className="mb-4 text-sm text-muted">
-          Mentores, mentorados e empresas podem solicitar cadastro. O administrador analisa
-          e libera a conta antes do primeiro login. Depois, complete seu perfil para
-          receber recomendacoes por compatibilidade.
+          Mentores, mentorados e empresas podem se cadastrar. A conta e liberada na hora;
+          depois, complete seu perfil para receber recomendacoes por compatibilidade.
         </p>
         <form action={registerAccount} className="space-y-3">
           <fieldset>
@@ -70,7 +69,7 @@ export default async function SignupPage({
             <span>Estou ciente de que meu nome, resumo profissional, bio, habilidades, rede e contribuicoes podem ficar visiveis publicamente na comunidade. Posso alterar essa visibilidade mais tarde no meu perfil.</span>
           </label>
           <button className={`${btnCls} w-full`}>
-            Enviar cadastro para aprovacao
+            Criar minha conta
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-muted">
