@@ -62,7 +62,7 @@ export default async function NovoProjetoPage({ searchParams }: { searchParams: 
             <Field label="Termino previsto"><input name="ends_on" type="date" className={inputCls} /></Field>
             <Field label="Vagas (opcional)"><input name="slots" type="number" min={1} max={500} className={inputCls} /></Field>
           </div>
-          <Field label="Repositorio (obrigatorio para open source)"><input name="repo_url" type="url" placeholder="https://github.com/..." className={inputCls} /></Field>
+          <Field label="Repositorio (obrigatorio para open source)"><input name="repo_url" type="text" inputMode="url" placeholder="github.com/usuario/projeto" className={inputCls} /></Field>
           {user.role !== "mentee" && (
             <label className="flex items-center gap-2 text-sm text-muted"><input type="checkbox" name="visibility" value="invite" /> Visivel apenas para participantes aceitos (nao aparece na busca publica)</label>
           )}

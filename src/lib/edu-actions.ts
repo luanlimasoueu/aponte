@@ -10,9 +10,17 @@ import { getProjectForViewer } from "./projects";
 
 const URL_RE = /^https?:\/\/[^\s]+$/i;
 
+const DOMAIN_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
+
+/** Accepts "empresa.com.br" or "www.empresa.com" and stores it as https://... */
 function optionalUrl(formData: FormData, key: string, label: string, ret: string): string {
-  const v = str(formData, key, 300);
-  if (v && !URL_RE.test(v)) back(ret, "error", `${label}: informe um endereco completo, comecando com https://`);
+  let v = str(formData, key, 300);
+  if (!v) return "";
+  if (!/^https?:\/\//i.test(v)) {
+    if (!DOMAIN_RE.test(v)) back(ret, "error", `${label}: informe um endereco valido, por exemplo empresa.com.br`);
+    v = `https://${v}`;
+  }
+  if (!URL_RE.test(v)) back(ret, "error", `${label}: informe um endereco valido, por exemplo empresa.com.br`);
   return v;
 }
 

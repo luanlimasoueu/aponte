@@ -45,7 +45,7 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
               <SelectField label="Setor de atuacao" name="sector" options={SECTORS} value={p.sector} />
               <Field label="Pessoa responsavel *"><input name="responsible" required defaultValue={p.responsible} className={inputCls} /></Field>
               <Field label="Cargo da pessoa responsavel"><input name="responsibleRole" defaultValue={p.responsibleRole} className={inputCls} /></Field>
-              <Field label="Site"><input name="website" type="url" placeholder="https://" defaultValue={p.website} className={inputCls} /></Field>
+              <Field label="Site"><input name="website" type="text" inputMode="url" placeholder="empresa.com.br" defaultValue={p.website} className={inputCls} /></Field>
               <Field label="CNPJ (opcional)"><input name="cnpj" inputMode="numeric" defaultValue={p.cnpj} className={inputCls} /></Field>
               <Field label="Telefone (opcional)"><input name="phone" type="tel" autoComplete="tel" defaultValue={p.phone} className={inputCls} /></Field>
               <Field label="Numero de colaboradores"><input name="companySize" defaultValue={p.companySize} className={inputCls} /></Field>
@@ -57,9 +57,9 @@ export default async function PerfilPage({ searchParams }: { searchParams: Promi
           </div>
           {!isCompany && (
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="LinkedIn (opcional)"><input name="linkedin" type="url" placeholder="https://" defaultValue={p.linkedin} className={inputCls} /></Field>
-              <Field label="GitHub (opcional)"><input name="github" type="url" placeholder="https://" defaultValue={p.github} className={inputCls} /></Field>
-              <Field label="Portfolio (opcional)"><input name="portfolio" type="url" placeholder="https://" defaultValue={p.portfolio} className={inputCls} /></Field>
+              <Field label="LinkedIn (opcional)"><input name="linkedin" type="text" inputMode="url" placeholder="linkedin.com/in/seu-nome" defaultValue={p.linkedin} className={inputCls} /></Field>
+              <Field label="GitHub (opcional)"><input name="github" type="text" inputMode="url" placeholder="github.com/seu-usuario" defaultValue={p.github} className={inputCls} /></Field>
+              <Field label="Portfolio (opcional)"><input name="portfolio" type="text" inputMode="url" placeholder="seusite.com" defaultValue={p.portfolio} className={inputCls} /></Field>
             </div>
           )}
         </Card>
