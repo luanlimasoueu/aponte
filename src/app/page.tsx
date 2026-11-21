@@ -224,8 +224,8 @@ export default async function Home() {
 
       {/* 02 — Como funciona */}
       <section className="border-t border-line py-20">
-        <div className="grid gap-12 lg:grid-cols-[1fr_200px]">
-          <div className="order-2 grid gap-x-10 gap-y-12 sm:grid-cols-3 lg:order-1">
+        <div className="grid gap-12 lg:grid-cols-[200px_1fr]">
+          <div className="order-2 grid gap-x-10 gap-y-12 sm:grid-cols-3">
             {STEPS.map((s, i) => (
               <div
                 key={s.title}
@@ -237,10 +237,10 @@ export default async function Home() {
               </div>
             ))}
           </div>
-          <div className="order-1 lg:order-2 lg:text-right">
+          <div className="order-1">
             <span className="font-mono text-xs text-muted">02</span>
             <h2 className="mt-3 text-3xl font-bold tracking-tight">Como funciona</h2>
-            <p className="mt-3 text-sm leading-relaxed text-muted lg:ml-auto lg:max-w-[200px]">
+            <p className="mt-3 text-sm leading-relaxed text-muted lg:max-w-[200px]">
               Um processo simples, do perfil a evidencia publica.
             </p>
           </div>
