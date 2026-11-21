@@ -1,3 +1,4 @@
+import { bareUrl, externalHref } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getDb, getProfile } from "@/lib/db";
@@ -38,7 +39,7 @@ export default async function EmpresasPage() {
                 <div className="mt-3 flex flex-wrap gap-3 text-sm">
                   <span className="text-muted">{c.projects} projeto(s)</span>
                   <span className="text-muted">{c.events} evento(s)</span>
-                  {c.profile.website && <a href={c.profile.website} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">Site</a>}
+                  {c.profile.website && <a href={externalHref(c.profile.website)} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">{bareUrl(c.profile.website)}</a>}
                 </div>
               </Card>
             </li>

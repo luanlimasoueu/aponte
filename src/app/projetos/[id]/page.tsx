@@ -1,3 +1,4 @@
+import { externalHref } from "@/lib/url";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -102,7 +103,7 @@ export default async function ProjetoPage({
           ].filter(([, v]) => v).map(([k, v]) => (
             <p key={k}><span className="text-muted">{k}:</span> {v}</p>
           ))}
-          {p.repo_url && <a href={p.repo_url} target="_blank" rel="noreferrer" className="block text-accent hover:underline">Repositorio ↗</a>}
+          {p.repo_url && <a href={externalHref(p.repo_url)} target="_blank" rel="noreferrer" className="block text-accent hover:underline">Repositorio ↗</a>}
         </Card>
 
         {!isOwner && p.kind !== "particular" && (

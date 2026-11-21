@@ -1,5 +1,6 @@
 "use server";
 
+import { bareUrl } from "./url";
 import { audit, getDb, getProfile, notify, saveProfile, type Profile, type Project } from "./db";
 import { back, csv, one, pick, requireUser, safeReturn, str } from "./session";
 import {
@@ -12,16 +13,16 @@ const URL_RE = /^https?:\/\/[^\s]+$/i;
 
 const DOMAIN_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#]\S*)?$/i;
 
-/** Accepts "empresa.com.br" or "www.empresa.com" and stores it as https://... */
+/** Accepts "empresa.com.br" or "https://empresa.com.br" and stores it without the scheme. */
 function optionalUrl(formData: FormData, key: string, label: string, ret: string): string {
   let v = str(formData, key, 300);
   if (!v) return "";
   if (!/^https?:\/\//i.test(v)) {
     if (!DOMAIN_RE.test(v)) back(ret, "error", `${label}: informe um endereco valido, por exemplo empresa.com.br`);
-    v = `https://${v}`;
+  } else if (!URL_RE.test(v)) {
+    back(ret, "error", `${label}: informe um endereco valido, por exemplo empresa.com.br`);
   }
-  if (!URL_RE.test(v)) back(ret, "error", `${label}: informe um endereco valido, por exemplo empresa.com.br`);
-  return v;
+  return bareUrl(v);
 }
 
 // ---------------- Perfil detalhado ----------------
