@@ -3,7 +3,7 @@ import { Geist } from "next/font/google";
 import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
 import { logout } from "@/lib/actions";
-import { getDb } from "@/lib/db";
+import { getDb, getProfile, profileCompleteness } from "@/lib/db";
 import { isTemporaryDatabase } from "@/lib/sql";
 import { Suspense } from "react";
 import { MobileMenuCloser } from "@/components/mobile-menu-closer";
@@ -37,6 +37,7 @@ export default async function RootLayout({
   const unread = user
     ? (await getDb().prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL").get(user.id) as { n: number }).n
     : 0;
+  const completeness = user ? Math.round(profileCompleteness(await getProfile(user.id), user.role) * 100) : 100;
   return (
     <html lang="pt-BR" className={geist.variable}>
       <body className="min-h-screen bg-ink font-sans text-fg antialiased">
@@ -44,6 +45,12 @@ export default async function RootLayout({
           <p role="status" className="bg-amber-400/15 px-5 py-2 text-center text-xs text-amber-200">
             Modo demonstracao: o banco de dados nao esta conectado, os dados sao temporarios e o login pode cair.
             Conecte o Neon na aba Storage da Vercel e publique de novo.
+          </p>
+        )}
+        {user && completeness < 100 && (
+          <p role="status" className="border-b border-accent/20 bg-accent/10 px-5 py-2 text-center text-sm text-fg">
+            Seu perfil esta {completeness}% completo.{" "}
+            <Link href="/perfil" className="font-semibold text-accent underline">Completar perfil</Link>
           </p>
         )}
         <a href="#conteudo" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-ink">
@@ -72,6 +79,7 @@ export default async function RootLayout({
               {user ? (
                 <>
                   <Link href="/aprendizado" className="text-muted transition-colors hover:text-fg">Aprendizado</Link>
+                  <Link href="/perfil" className="text-muted transition-colors hover:text-fg">Meu perfil</Link>
                   <Link href="/notificacoes" className="relative text-muted transition-colors hover:text-fg" aria-label={`Notificacoes${unread ? `, ${unread} nao lidas` : ""}`}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     {unread > 0 && <span className="absolute -right-2 -top-2 rounded-full bg-accent px-1.5 text-[10px] font-bold text-ink">{unread}</span>}
