@@ -5,6 +5,12 @@ a pessoas em **inicio de carreira ou transicao** — em qualquer idade.
 
 ## Funcionalidades (MVP)
 
+- **Novo:** tres acessos (Sou Mentor / Sou Mentorado / Sou Empresa), perfis detalhados
+  (ferramentas, areas, tipos de ajuda, disponibilidade, modalidade e dados da empresa), busca
+  de mentores e mentorados por compatibilidade explicavel, projetos particulares, open source,
+  educacionais e empresariais (com candidaturas e privacidade), metas com etapas e feedback,
+  notificacoes e filtros e detalhes de eventos. Veja "Jornada educacional" no roteiro de testes.
+
 - **Cadastro com aprovacao**: mentores e mentorados solicitam acesso com nome,
   email e senha; o administrador aprova antes do primeiro login.
 - **Tres papeis**: mentor, mentorado e empresa (empresas tambem podem mentorar).
@@ -96,7 +102,9 @@ pessoa pode desativar a visibilidade no editor do proprio perfil.
 ## Stack
 
 - Next.js (App Router) + React + Tailwind CSS
-- SQLite via `node:sqlite` embutido no Node 24+ (zero dependencias nativas)
+- Banco de dados (`src/lib/sql.ts`): **PostgreSQL** quando `DATABASE_URL` esta definida
+  (producao/Vercel com Neon) e **SQLite** via `node:sqlite` (Node 24+) quando nao esta (local, sem
+  instalar nada). As consultas sao as mesmas nos dois bancos.
 - Autenticacao propria: senha com scrypt + sessao por cookie httpOnly
 
 ## Rodando local
@@ -107,8 +115,15 @@ npm run dev
 # http://localhost:3000
 ```
 
-O banco `data/ponte.db` e criado e populado com dados de demo na primeira
-execucao. Para comecar do zero, apague a pasta `data/`. Para desativar o
+Sem `DATABASE_URL`, o banco SQLite `data/ponte.db` e criado e populado com dados de demo na
+primeira execucao. Para usar PostgreSQL localmente:
+
+```bash
+docker run -d --name ponte-pg -e POSTGRES_PASSWORD=ponte -e POSTGRES_DB=ponte -p 5432:5432 postgres:16
+DATABASE_URL=postgres://postgres:ponte@localhost:5432/ponte npm run dev
+```
+
+As tabelas, as colunas novas e os dados de demo sao criados automaticamente no primeiro acesso. Para comecar do zero, apague a pasta `data/`. Para desativar o
 seed de demo (ex.: deploy real), use `SEED_DEMO=0`.
 
 Para rodar em modo producao (`output: "standalone"`, mesmo do Dockerfile):
@@ -188,26 +203,24 @@ para Preview e Production.
 6. A pessoa ja pode informar disponibilidade, solicitar eventos e participar de
    mentorias.
 
-### Publicar na Vercel com seguranca
+### Publicar na Vercel (com PostgreSQL/Neon)
 
-> **Antes de publicar para amigos:** o banco SQLite atual e adequado para o
-> ambiente local, mas deve ser migrado para PostgreSQL gerenciado antes de usar
-> a Vercel em producao. Arquivos locais nao sao uma base persistente confiavel
-> para uma aplicacao serverless.
+Na Vercel o banco precisa ser PostgreSQL: o disco das funcoes serverless e temporario. Sem
+`DATABASE_URL`, o app usa SQLite em `/tmp` apenas como demonstracao (os dados se perdem).
 
-1. Crie um PostgreSQL gerenciado — Neon e a opcao recomendada pela integracao
-   da Vercel.
-2. Migre o codigo do banco de SQLite para PostgreSQL e configure `DATABASE_URL`.
-3. Importe o repositorio na Vercel.
-4. Em **Settings → Environment Variables**, cadastre `DATABASE_URL`,
-   `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `GOOGLE_CLIENT_ID`,
-   `GOOGLE_CLIENT_SECRET` e `BASE_URL`.
-5. Configure `BASE_URL` com o dominio final, por exemplo
-   `https://ponte.vercel.app`.
-6. No Google Cloud, adicione
-   `https://ponte.vercel.app/auth/google/callback` como URI de redirecionamento.
-7. Faça primeiro um deploy Preview, execute o roteiro de testes deste README e
-   so depois publique em Production.
+1. Em **vercel.com → Add New → Project**, importe o repositorio.
+2. Antes do primeiro deploy (ou depois, em **Storage**), clique em **Create Database → Neon**
+   e conecte ao projeto. A Vercel cria a variavel `DATABASE_URL` automaticamente.
+3. Em **Settings → Environment Variables**, cadastre `ADMIN_EMAIL` e `ADMIN_PASSWORD`
+   (para acessar `/admin`). Os cadastros sao liberados na hora; para exigir aprovacao manual, use `REQUIRE_APPROVAL=1`. Opcional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+   e `BASE_URL`. Para nao criar as contas de demo em producao, use `SEED_DEMO=0`.
+4. Para o "Esqueci minha senha" enviar e-mails, crie uma conta gratuita no Resend e cadastre
+   `RESEND_API_KEY` (e, com dominio verificado, `EMAIL_FROM`, ex.: `Ponte <nao-responda@seudominio.com>`).
+   Sem a chave, o link de redefinicao aparece apenas no log do servidor.
+5. Faca o deploy (ou **Redeploy** apos criar o banco). As tabelas e os dados de demo sao
+   criados no primeiro acesso.
+5. Para login com Google, adicione `https://SEU-DOMINIO/auth/google/callback` como URI de
+   redirecionamento no Google Cloud.
 
 As acoes de cadastro, eventos, presenca e certificados validam usuario, papel
 e propriedade no servidor. Senhas sao protegidas com `scrypt`, sessoes usam
@@ -302,14 +315,59 @@ Com as variaveis `ADMIN_EMAIL` e `ADMIN_PASSWORD` configuradas, acesse
 `/admin`, aprove um cadastro de mentor ou mentorado e confirme que ele consegue
 entrar com o email e senha escolhidos no registro.
 
+### 5. Jornada educacional (HackBrasil — Acesso a Educacao)
+
+Jornada principal: **Cadastro → Busca → Mentoria → Projeto → Aprendizado**.
+
+1. Na pagina inicial, escolha **Sou Mentor**, **Sou Mentorado** ou **Sou Empresa**
+   (`/sou-mentor`, `/sou-mentorado`, `/sou-empresa`).
+2. Entre como `joao@email.com` e abra `/mentores`: os filtros ja vem preenchidos com
+   as ferramentas que ele quer aprender e a disponibilidade dele. Cada mentor mostra a
+   porcentagem de compatibilidade, os motivos, as diferencas e o calculo por criterio.
+3. Solicite mentoria informando o objetivo. O mentor recebe uma notificacao (sino no topo).
+4. Entre como `maria@email.com` e abra `/projetos/1` (projeto particular). Somente ela e
+   o mentor autorizado (Carlos) veem esse projeto. Clique em **Remover acesso**: Carlos
+   deixa de ver na hora. Empresas e outros mentorados recebem 404.
+5. Em `/aprendizado`, Maria marca etapas da meta; Carlos ve a meta e deixa feedback.
+6. Entre como `contato@techcorp.dev`, abra `/projetos/3` e clique em
+   **Buscar mentorados compativeis**: `/talentos` usa as ferramentas e areas do projeto.
+   A candidatura do Pedro pode ser aceita ou recusada no proprio projeto.
+7. `/eventos` tem filtros por modalidade, categoria e cidade, e cada evento tem uma pagina
+   de detalhes (`/eventos/[id]`). A inscricao, a aprovacao, a lista de espera, o check-in e
+   os certificados continuam iguais.
+
+**Calculo de compatibilidade** (`src/lib/matching.ts`, deterministico e sem IA):
+
+| Mentorado procurando mentor | Peso | Empresa/mentor procurando mentorado | Peso |
+| --- | --- | --- | --- |
+| Ferramentas | 30% | Ferramentas (conhece = 1, quer aprender = 0,5) | 30% |
+| Tipo de projeto | 20% | Tipo de projeto | 25% |
+| Tipo de ajuda | 20% | Nivel de experiencia | 15% |
+| Disponibilidade | 15% | Objetivos de aprendizado | 15% |
+| Experiencia do mentor | 10% | Disponibilidade | 10% |
+| Modalidade | 5% | Modalidade | 5% |
+
+Criterios que nao foram preenchidos nao entram na conta: o peso deles e redistribuido.
+Os filtros "Obrigatorio" excluem quem nao atende ao criterio. Empates sao desempatados
+por ferramentas, depois disponibilidade, depois perfil mais completo e, por fim, nome.
+
+**Privacidade de projetos** (`canViewProject` em `src/lib/matching.ts`, aplicado no servidor por
+`src/lib/projects.ts`): projetos particulares sao sempre privados, nao aparecem em buscas e
+so podem ser vistos pelo dono e pelos mentores com acesso ativo. So e possivel dar acesso a
+mentores com mentoria ativa. Quem nao tem permissao recebe a mesma resposta 404 de um projeto
+inexistente.
+
 ### Checklist tecnico
 
 ```bash
 npm run lint
-npx tsc --noEmit
+npm run typecheck
+npm test        # testes de compatibilidade, privacidade, projetos, eventos, perfis e senha (SQLite)
+DATABASE_URL=postgres://postgres:ponte@localhost:5432/ponte npm run test:pg   # mesmos testes de banco no PostgreSQL (apaga o schema public)
+npm run build
 ```
 
-Os dois comandos devem concluir sem erros. Em seguida, confirme que
+Todos os comandos devem concluir sem erros. Em seguida, confirme que
 `http://localhost:3000/eventos` responde e apresenta a agenda de eventos.
 
 ## Deploy (Docker — Railway, Render, Fly.io, VPS)

@@ -3,6 +3,10 @@ import { Geist } from "next/font/google";
 import Link from "next/link";
 import { getSessionUser } from "@/lib/auth";
 import { logout } from "@/lib/actions";
+import { getDb } from "@/lib/db";
+import { isTemporaryDatabase } from "@/lib/sql";
+import { Suspense } from "react";
+import { MobileMenuCloser } from "@/components/mobile-menu-closer";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist" });
@@ -16,17 +20,35 @@ export const metadata: Metadata = {
 const NAV = [
   { href: "/mentores", label: "Mentores" },
   { href: "/talentos", label: "Talentos" },
-  { href: "/oportunidades", label: "Oportunidades" },
+  { href: "/projetos", label: "Projetos" },
   { href: "/eventos", label: "Eventos" },
+  { href: "/oportunidades", label: "Oportunidades" },
+];
+
+const USER_NAV = [
+  { href: "/aprendizado", label: "Aprendizado" },
+  { href: "/perfil", label: "Meu perfil" },
 ];
 
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getSessionUser();
+  const unread = user
+    ? (await getDb().prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL").get(user.id) as { n: number }).n
+    : 0;
   return (
     <html lang="pt-BR" className={geist.variable}>
       <body className="min-h-screen bg-ink font-sans text-fg antialiased">
+        {isTemporaryDatabase() && (
+          <p role="status" className="bg-amber-400/15 px-5 py-2 text-center text-xs text-amber-200">
+            Modo demonstracao: o banco de dados nao esta conectado, os dados sao temporarios e o login pode cair.
+            Conecte o Neon na aba Storage da Vercel e publique de novo.
+          </p>
+        )}
+        <a href="#conteudo" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-accent focus:px-4 focus:py-2 focus:text-ink">
+          Pular para o conteudo
+        </a>
         <header className="border-b border-line bg-ink">
           <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-5">
             <div className="flex items-center gap-10">
@@ -38,7 +60,7 @@ export default async function RootLayout({
                 </svg>
                 Ponte
               </Link>
-              <nav className="hidden items-center gap-6 text-sm text-muted sm:flex">
+              <nav aria-label="Principal" className="hidden items-center gap-6 text-sm text-muted md:flex">
                 {NAV.map((n) => (
                   <Link key={n.href} href={n.href} className="transition-colors hover:text-fg">
                     {n.label}
@@ -46,9 +68,14 @@ export default async function RootLayout({
                 ))}
               </nav>
             </div>
-            <div className="hidden items-center gap-5 text-sm sm:flex">
+            <div className="hidden items-center gap-5 text-sm md:flex">
               {user ? (
                 <>
+                  <Link href="/aprendizado" className="text-muted transition-colors hover:text-fg">Aprendizado</Link>
+                  <Link href="/notificacoes" className="relative text-muted transition-colors hover:text-fg" aria-label={`Notificacoes${unread ? `, ${unread} nao lidas` : ""}`}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    {unread > 0 && <span className="absolute -right-2 -top-2 rounded-full bg-accent px-1.5 text-[10px] font-bold text-ink">{unread}</span>}
+                  </Link>
                   <Link
                     href="/dashboard"
                     className="font-medium text-fg/90 transition-colors hover:text-fg"
@@ -75,7 +102,7 @@ export default async function RootLayout({
                 </>
               )}
             </div>
-            <details className="group relative sm:hidden">
+            <details id="menu-mobile" className="group relative md:hidden">
               <summary className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-md border border-line text-muted">
                 <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
                   <path d="M2.5 5.5h13M2.5 9h13M2.5 12.5h13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
@@ -96,6 +123,11 @@ export default async function RootLayout({
                   <div className="my-2 border-t border-line" />
                   {user ? (
                     <>
+                      {USER_NAV.concat([{ href: "/notificacoes", label: `Notificacoes${unread ? ` (${unread})` : ""}` }]).map((n) => (
+                        <Link key={n.href} href={n.href} className="rounded-md px-3 py-2.5 text-muted transition-colors hover:bg-raised hover:text-fg">
+                          {n.label}
+                        </Link>
+                      ))}
                       <Link
                         href="/dashboard"
                         className="rounded-md px-3 py-2.5 font-medium text-fg transition-colors hover:bg-raised"
@@ -129,10 +161,19 @@ export default async function RootLayout({
             </details>
           </div>
         </header>
-        <main className="mx-auto max-w-6xl px-5">{children}</main>
+        <Suspense fallback={null}>
+          <MobileMenuCloser targetId="menu-mobile" />
+        </Suspense>
+        <main id="conteudo" className="mx-auto max-w-6xl px-5">{children}</main>
         <footer className="mt-24 border-t border-line">
           <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-5 py-8 text-xs text-muted/70 sm:flex-row">
-            <span>Ponte — comunidade aberta de mentoria.</span>
+            <span>Ponte — conecta quem quer aprender com quem pode ensinar.</span>
+            <nav aria-label="Rodape" className="flex gap-4">
+              <Link href="/sou-mentor" className="hover:text-fg">Sou Mentor</Link>
+              <Link href="/sou-mentorado" className="hover:text-fg">Sou Mentorado</Link>
+              <Link href="/sou-empresa" className="hover:text-fg">Sou Empresa</Link>
+              <Link href="/conduta" className="hover:text-fg">Conduta</Link>
+            </nav>
             <span>Contas de demo: ana@ponte.dev / senha123</span>
           </div>
         </footer>

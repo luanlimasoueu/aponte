@@ -104,3 +104,90 @@ export const btnCls =
 
 export const btnSecondaryCls =
   "inline-flex items-center justify-center rounded-md border border-line bg-transparent px-4 py-2 text-sm font-medium text-fg hover:border-fg/40 hover:bg-raised transition-colors cursor-pointer";
+
+export function CheckGroup({
+  legend, name, options, selected = [], hint, columns = 2,
+}: {
+  legend: string;
+  name: string;
+  options: readonly string[];
+  selected?: string[];
+  hint?: string;
+  columns?: 2 | 3 | 4;
+}) {
+  const cols = { 2: "sm:grid-cols-2", 3: "sm:grid-cols-3", 4: "grid-cols-2 sm:grid-cols-4" }[columns];
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium text-fg">{legend}</legend>
+      {hint && <p className="text-xs text-muted">{hint}</p>}
+      <div className={`grid gap-1.5 ${cols}`}>
+        {options.map((o) => (
+          <label
+            key={o}
+            className="flex cursor-pointer items-center gap-2 rounded-md border border-line px-2.5 py-1.5 text-sm text-muted transition-colors hover:border-fg/30 has-[:checked]:border-accent/60 has-[:checked]:bg-accent/10 has-[:checked]:text-fg has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent"
+          >
+            <input type="checkbox" name={name} value={o} defaultChecked={selected.includes(o)} className="accent-[#9db4ff]" />
+            {o}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+export function SelectField({
+  label, name, options, value = "", placeholder = "Selecione",
+}: {
+  label: string;
+  name: string;
+  options: readonly string[];
+  value?: string;
+  placeholder?: string;
+}) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-fg">{label}</span>
+      <select name={name} defaultValue={value} className={inputCls}>
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>{o}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return (
+    <label className="block space-y-1.5">
+      <span className="text-sm font-medium text-fg">{label}</span>
+      {children}
+      {hint && <span className="block text-xs text-muted">{hint}</span>}
+    </label>
+  );
+}
+
+export function MatchMeter({ percent }: { percent: number }) {
+  const tone = percent >= 75 ? "bg-emerald-400" : percent >= 50 ? "bg-accent" : "bg-amber-400";
+  return (
+    <div className="min-w-[120px]">
+      <p className="text-right text-2xl font-bold tabular-nums text-fg">
+        {percent}%<span className="sr-only"> de compatibilidade</span>
+      </p>
+      <div className="mt-1 h-1.5 rounded-full bg-raised" aria-hidden="true">
+        <div className={`h-1.5 rounded-full ${tone}`} style={{ width: `${percent}%` }} />
+      </div>
+      <p className="mt-1 text-right text-[11px] uppercase tracking-wider text-muted">compatibilidade</p>
+    </div>
+  );
+}
+
+export function PageHeader({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
+  return (
+    <div className="py-10">
+      <Eyebrow>{eyebrow}</Eyebrow>
+      <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">{title}</h1>
+      {children && <div className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">{children}</div>}
+    </div>
+  );
+}
