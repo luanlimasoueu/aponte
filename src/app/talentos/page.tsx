@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { getDb, getProfile, profileCompleteness, type Project } from "@/lib/db";
 import { getSessionUser } from "@/lib/auth";
+import { inviteMentee } from "@/lib/actions";
 import { AREAS, MENTEE_LEVELS, MODALITIES, PERIODS, TOOLS, WEEKDAYS } from "@/lib/catalog";
 import { explain, matchMentee, rank, type MenteeQuery } from "@/lib/matching";
 import { arr, val, type SearchParams } from "@/lib/params";
 import { splitCsv } from "@/lib/session";
-import { Card, CheckGroup, Empty, MatchMeter, PageHeader, SelectField, SkillChips, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
+import { Card, CheckGroup, Empty, Flash, MatchMeter, PageHeader, SelectField, SkillChips, btnCls, btnSecondaryCls, inputCls } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,12 @@ type TalentRow = { id: number; name: string; headline: string; skills: string; c
 export default async function TalentosPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const user = await getSessionUser();
+  const linked = new Map<number, string>(
+    user?.role === "mentor"
+      ? ((await getDb().prepare("SELECT mentee_id, status FROM mentorships WHERE mentor_id = ?").all(user.id)) as unknown as { mentee_id: number; status: string }[])
+          .map((r) => [Number(r.mentee_id), r.status])
+      : []
+  );
   const db = getDb();
   const q = val(sp, "q");
   const like = `%${q}%`;
@@ -65,6 +72,7 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
         tipo de projeto (25%), nivel (15%), objetivos de aprendizado (15%), disponibilidade (10%) e modalidade (5%).
         Projetos particulares nunca aparecem aqui.
       </PageHeader>
+      <Flash params={{ msg: typeof sp.msg === "string" ? sp.msg : undefined, error: typeof sp.error === "string" ? sp.error : undefined }} />
 
       <div className="grid gap-8 lg:grid-cols-[320px_1fr]">
         <form key={`${projectId}-${JSON.stringify(query)}`} method="GET" action="/talentos" className="space-y-5 self-start rounded-lg border border-line bg-surface p-5" aria-label="Filtros de busca">
@@ -143,6 +151,24 @@ export default async function TalentosPage({ searchParams }: { searchParams: Pro
                       <span className={t.endorsements > 0 ? "font-medium text-emerald-400" : ""}>{t.endorsements} recomendacoes</span>
                       <span>{t.mentors} mentores</span>
                     </div>
+                    {user?.role === "mentor" && (
+                      linked.has(t.id) ? (
+                        <p className="mt-3 text-sm text-muted">{linked.get(t.id) === "active" ? "Ja e seu mentorado." : "Convite ou pedido pendente."}</p>
+                      ) : (
+                        <details className="mt-3">
+                          <summary className={`${btnCls} cursor-pointer list-none`}>Convidar para mentoria</summary>
+                          <form action={inviteMentee} className="mt-3 space-y-2">
+                            <input type="hidden" name="mentee_id" value={t.id} />
+                            <input type="hidden" name="return" value="/talentos" />
+                            <label className="block text-sm"><span className="text-muted">Objetivo da mentoria</span>
+                              <input name="objective" maxLength={300} className={inputCls} placeholder="Ex.: montar o primeiro portfolio em React" /></label>
+                            <label className="block text-sm"><span className="text-muted">Mensagem (opcional)</span>
+                              <textarea name="message" rows={2} maxLength={1000} className={inputCls} /></label>
+                            <button className={btnCls}>Enviar convite</button>
+                          </form>
+                        </details>
+                      )
+                    )}
                   </Card>
                 </li>
               ))}

@@ -303,13 +303,13 @@ export default async function DashboardPage({
 
   const links = await db
     .prepare(
-      `SELECT m.id AS mentorship_id, m.status, m.mentor_id, m.mentee_id,
+      `SELECT m.id AS mentorship_id, m.status, m.mentor_id, m.mentee_id, m.requested_by,
               u.id, u.name, u.headline, u.role, u.skills
        FROM mentorships m
        JOIN users u ON u.id = CASE WHEN m.mentor_id = ? THEN m.mentee_id ELSE m.mentor_id END
        WHERE (m.mentor_id = ? OR m.mentee_id = ?)`
     )
-    .all(user.id, user.id, user.id) as unknown as (LinkRow & { status: string })[];
+    .all(user.id, user.id, user.id) as unknown as (LinkRow & { status: string; requested_by: string })[];
 
   const myOpps = await db
     .prepare("SELECT * FROM opportunities WHERE owner_id = ? ORDER BY created_at DESC")
@@ -339,8 +339,8 @@ export default async function DashboardPage({
     ? (await db.prepare("SELECT * FROM availability WHERE user_id = ? ORDER BY weekday, start_time").all(user.id) as unknown as AvailabilityRow[])
     : [];
 
-  const incoming = links.filter((l) => l.status === "pending" && isMentorSide);
-  const sentPending = links.filter((l) => l.status === "pending" && !isMentorSide);
+  const incoming = links.filter((l) => l.status === "pending" && isMentorSide && l.requested_by !== "mentor");
+  const sentPending = links.filter((l) => l.status === "pending" && !isMentorSide && l.requested_by !== "mentor");
   const network = links.filter((l) => l.status === "active");
 
   const myContribs =

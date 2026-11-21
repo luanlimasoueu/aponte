@@ -260,7 +260,7 @@ export async function respondMentorship(formData: FormData) {
   const decision = str(formData, "decision");
   const db = getDb();
   const req = await db
-    .prepare("SELECT id, mentee_id FROM mentorships WHERE id = ? AND mentor_id = ? AND status = 'pending'")
+    .prepare("SELECT id, mentee_id FROM mentorships WHERE id = ? AND mentor_id = ? AND status = 'pending' AND requested_by <> 'mentor'")
     .get(id, user.id) as { id: number; mentee_id: number } | undefined;
   if (!req) back("/dashboard", "error", "Solicitacao nao encontrada.");
   await notify(
@@ -274,6 +274,47 @@ export async function respondMentorship(formData: FormData) {
     await db.prepare("DELETE FROM mentorships WHERE id = ?").run(id);
   }
   back("/dashboard", "msg", decision === "accept" ? "Mentoria aceita." : "Solicitacao recusada.");
+}
+
+export async function inviteMentee(formData: FormData) {
+  const user = await me();
+  const menteeId = Number(formData.get("mentee_id"));
+  const ret = str(formData, "return") || "/talentos";
+  if (user.role !== "mentor") back(ret, "error", "Apenas mentores podem convidar mentorados.");
+  const mentee = await getDb()
+    .prepare("SELECT id FROM users WHERE id = ? AND role = 'mentee' AND account_status = 'active'")
+    .get(menteeId);
+  if (!mentee) back(ret, "error", "Mentorado nao encontrado.");
+  try {
+    await getDb()
+      .prepare("INSERT INTO mentorships (mentor_id, mentee_id, objective, message, requested_by) VALUES (?,?,?,?, 'mentor')")
+      .run(user.id, menteeId, str(formData, "objective").slice(0, 300), str(formData, "message").slice(0, 1000));
+  } catch {
+    back(ret, "error", "Voce ja tem uma mentoria ou convite com esta pessoa.");
+  }
+  await notify(menteeId, `${user.name} convidou voce para uma mentoria. Aceite ou recuse em Mentores.`, "/minha-rede?aba=mentores");
+  back(ret, "msg", "Convite enviado. O mentorado sera avisado e podera aceitar ou recusar.");
+}
+
+export async function respondMentorInvite(formData: FormData) {
+  const user = await me();
+  const ret = "/minha-rede?aba=mentores";
+  if (user.role !== "mentee") back(ret, "error", "Apenas mentorados respondem convites.");
+  const id = Number(formData.get("id"));
+  const accept = str(formData, "decision") === "accept";
+  const db = getDb();
+  const inv = (await db
+    .prepare("SELECT id, mentor_id FROM mentorships WHERE id = ? AND mentee_id = ? AND status = 'pending' AND requested_by = 'mentor'")
+    .get(id, user.id)) as { id: number; mentor_id: number } | undefined;
+  if (!inv) back(ret, "error", "Convite nao encontrado.");
+  if (accept) await db.prepare("UPDATE mentorships SET status = 'active' WHERE id = ?").run(id);
+  else await db.prepare("DELETE FROM mentorships WHERE id = ?").run(id);
+  await notify(
+    inv!.mentor_id,
+    accept ? `${user.name} aceitou seu convite de mentoria.` : `${user.name} recusou seu convite de mentoria.`,
+    "/minha-rede?aba=mentorados"
+  );
+  back(ret, "msg", accept ? "Convite aceito. A mentoria esta ativa." : "Convite recusado.");
 }
 
 export async function removeMentorship(formData: FormData) {

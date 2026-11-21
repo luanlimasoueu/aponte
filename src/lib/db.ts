@@ -432,6 +432,7 @@ async function ensureMigrations(db: Db) {
   await addColumns(db, "mentorships", {
     objective: "TEXT NOT NULL DEFAULT ''",
     message: "TEXT NOT NULL DEFAULT ''",
+    requested_by: "TEXT NOT NULL DEFAULT 'mentee'",
   });
 }
 
