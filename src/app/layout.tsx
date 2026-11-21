@@ -25,6 +25,16 @@ const NAV = [
   { href: "/oportunidades", label: "Oportunidades" },
 ];
 
+const ACCOUNT_NAV = [
+  { href: "/dashboard", label: "Painel" },
+  { href: "/perfil", label: "Meu perfil" },
+  { href: "/aprendizado", label: "Aprendizado" },
+  { href: "/minha-rede?aba=mentores", label: "Mentores" },
+  { href: "/minha-rede?aba=mentorados", label: "Mentorados" },
+  { href: "/meus-projetos", label: "Meus projetos" },
+  { href: "/meus-eventos", label: "Meus eventos" },
+];
+
 const USER_NAV = [
   { href: "/aprendizado", label: "Aprendizado" },
   { href: "/perfil", label: "Meu perfil" },
@@ -78,18 +88,23 @@ export default async function RootLayout({
             <div className="hidden items-center gap-5 text-sm md:flex">
               {user ? (
                 <>
-                  <Link href="/aprendizado" className="text-muted transition-colors hover:text-fg">Aprendizado</Link>
-                  <Link href="/perfil" className="text-muted transition-colors hover:text-fg">Meu perfil</Link>
-                  <Link href="/notificacoes" className="relative text-muted transition-colors hover:text-fg" aria-label={`Notificacoes${unread ? `, ${unread} nao lidas` : ""}`}>
+                                    <Link href="/notificacoes" className="relative text-muted transition-colors hover:text-fg" aria-label={`Notificacoes${unread ? `, ${unread} nao lidas` : ""}`}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     {unread > 0 && <span className="absolute -right-2 -top-2 rounded-full bg-accent px-1.5 text-[10px] font-bold text-ink">{unread}</span>}
                   </Link>
-                  <Link
-                    href="/dashboard"
-                    className="font-medium text-fg/90 transition-colors hover:text-fg"
-                  >
-                    {user.name.split(" ")[0]}
-                  </Link>
+                  <details id="menu-usuario" className="relative">
+                    <summary className="flex cursor-pointer list-none items-center gap-1 font-medium text-fg/90 transition-colors hover:text-fg">
+                      {user.name.split(" ")[0]}
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+                    </summary>
+                    <nav aria-label="Minha conta" className="absolute right-0 top-8 z-40 flex w-56 flex-col rounded-lg border border-line bg-surface p-2 text-sm shadow-2xl shadow-black/50">
+                      {ACCOUNT_NAV.map((n) => (
+                        <Link key={n.href} href={n.href} className="rounded-md px-3 py-2 text-muted transition-colors hover:bg-raised hover:text-fg">
+                          {n.label}
+                        </Link>
+                      ))}
+                    </nav>
+                  </details>
                   <form action={logout}>
                     <button className="text-muted transition-colors hover:text-fg cursor-pointer">
                       Sair
@@ -131,7 +146,7 @@ export default async function RootLayout({
                   <div className="my-2 border-t border-line" />
                   {user ? (
                     <>
-                      {USER_NAV.concat([{ href: "/notificacoes", label: `Notificacoes${unread ? ` (${unread})` : ""}` }]).map((n) => (
+                      {ACCOUNT_NAV.concat([{ href: "/notificacoes", label: `Notificacoes${unread ? ` (${unread})` : ""}` }]).map((n) => (
                         <Link key={n.href} href={n.href} className="rounded-md px-3 py-2.5 text-muted transition-colors hover:bg-raised hover:text-fg">
                           {n.label}
                         </Link>
@@ -171,6 +186,7 @@ export default async function RootLayout({
         </header>
         <Suspense fallback={null}>
           <MobileMenuCloser targetId="menu-mobile" />
+          <MobileMenuCloser targetId="menu-usuario" />
         </Suspense>
         <main id="conteudo" className="mx-auto max-w-6xl px-5">{children}</main>
         <footer className="mt-24 border-t border-line">
